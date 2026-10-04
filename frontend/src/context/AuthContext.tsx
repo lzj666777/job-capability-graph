@@ -21,44 +21,14 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true';
-
-// In mock mode we skip the real login check
-const MOCK_USER: AuthUser = {
-  id: 'mock-admin',
-  username: 'admin',
-  display_name: '管理员（演示）',
-  role: 'admin',
-  is_active: true,
-};
-
 async function fetchMe(): Promise<AuthUser | null> {
-  try {
-    const res = await fetch(`${API_BASE_URL}/api/v1/auth/me`, {
-      credentials: 'include',
-    });
-    if (!res.ok) return null;
-    const body = await res.json();
-    return (body.data ?? body) as AuthUser;
-  } catch {
-    return null;
-  }
-}
-
-async function createGuestSession(): Promise<AuthUser> {
-  const res = await fetch(`${API_BASE_URL}/api/v1/auth/guest`, {
-    method: 'POST',
+  const res = await fetch(`${API_BASE_URL}/api/v1/auth/me`, {
     credentials: 'include',
   });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(
-      (body as any).error?.message
-        ?? (body as any).detail
-        ?? '浏览器任务通道初始化失败，请确认后端服务已启动',
-    );
-  }
-  return ((body as any).data ?? body) as AuthUser;
+  if (res.status === 401) return null;
+  if (!res.ok) throw new Error('无法读取登录状态');
+  const body = await res.json();
+  return (body.data ?? body) as AuthUser;
 }
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
@@ -69,12 +39,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const bootstrappedRef = useRef(false);
 
   const ensureSession = useCallback(async (): Promise<AuthUser | null> => {
-    if (USE_MOCK) {
-      setUser(MOCK_USER);
-      setSessionError(null);
-      setLoading(false);
-      return MOCK_USER;
-    }
     if (user) return user;
     if (sessionPromiseRef.current) return sessionPromiseRef.current;
 
@@ -83,12 +47,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setSessionError(null);
       try {
         const current = await fetchMe();
-        const next = current ?? await createGuestSession();
-        setUser(next);
-        return next;
-      } catch (error) {
+        setUser(current);
+        return current;
+      } catch {
         setUser(null);
-        setSessionError(error instanceof Error ? error.message : '浏览器任务通道初始化失败');
+        setSessionError('无法连接后端服务，请检查 API 是否已启动');
         return null;
       } finally {
         setLoading(false);
@@ -124,19 +87,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const body = await res.json().catch(() => ({}));
       throw new Error((body as any).error?.message ?? (body as any).detail ?? '登录失败');
     }
-    const u = await fetchMe();
-    setUser(u);
+    const body = await res.json();
+    setUser((body.data ?? body) as AuthUser);
+    setSessionError(null);
   };
 
   const logout = async () => {
-    if (!USE_MOCK) {
-      const csrf = document.cookie.match(/(?:^|; )csrf=([^;]*)/)?.[1];
-      await fetch(`${API_BASE_URL}/api/v1/auth/logout`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: csrf ? { 'X-CSRF-Token': decodeURIComponent(csrf) } : {},
-      }).catch(() => {});
-    }
+    const csrf = document.cookie.match(/(?:^|; )csrf=([^;]*)/)?.[1];
+    await fetch(`${API_BASE_URL}/api/v1/auth/logout`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: csrf ? { 'X-CSRF-Token': decodeURIComponent(csrf) } : {},
+    }).catch(() => {});
     setUser(null);
     sessionPromiseRef.current = null;
   };

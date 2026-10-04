@@ -1,7 +1,21 @@
+import subprocess
+import sys
+
 import pytest
 
 from app.core.security import verify_password
 from scripts.create_user import CLIUserError, create_cli_user
+
+
+def test_create_user_script_runs_in_a_fresh_process() -> None:
+    result = subprocess.run(
+        [sys.executable, "scripts/create_user.py", "--help"],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
 
 
 async def test_first_cli_user_must_be_admin(db_session) -> None:

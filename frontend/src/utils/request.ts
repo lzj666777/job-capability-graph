@@ -17,15 +17,6 @@ const NEVER_MOCK_PREFIXES = ['/api/v1/'];
 
 const WRITE_METHODS = new Set(['post', 'put', 'patch', 'delete']);
 
-// Debug logging
-console.log('[Request] Configuration:', {
-  USE_MOCK,
-  BASE_URL,
-  ALWAYS_MOCK_PREFIXES,
-  VITE_USE_MOCK: import.meta.env.VITE_USE_MOCK,
-  VITE_API_BASE_URL: import.meta.env.VITE_API_BASE_URL,
-});
-
 /** Read a cookie value by name (CSRF token is stored in a non-HttpOnly cookie). */
 function getCookie(name: string): string | null {
   const match = document.cookie.match(new RegExp('(?:^|; )' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '=([^;]*)'));
@@ -101,11 +92,20 @@ class Request {
         const body = error.response?.data;
         const detail = body?.detail;
         const apiError = body?.error;
-
-        // Removed 401 redirect logic - no authentication required
+        const validationDetails = Array.isArray(apiError?.details)
+          ? apiError.details.flatMap((item: any) => {
+              if (typeof item?.msg !== 'string') return [];
+              const location = Array.isArray(item.loc)
+                ? item.loc.filter((part: unknown) => part !== 'body').join('.')
+                : '';
+              return [`${location ? `${location}: ` : ''}${item.msg}`];
+            })
+          : [];
 
         const message =
-          typeof apiError?.message === 'string'
+          validationDetails.length > 0
+            ? `${apiError?.message ?? '请求参数校验失败'}：${validationDetails.join('；')}`
+            : typeof apiError?.message === 'string'
             ? apiError.message
             : typeof detail === 'string'
             ? detail
@@ -138,7 +138,10 @@ class Request {
   upload<T = any>(url: string, formData: FormData, config?: AxiosRequestConfig): Promise<T> {
     return this.instance.post(url, formData, {
       ...config,
-      headers: { 'Content-Type': 'multipart/form-data' },
+      headers: {
+        ...config?.headers,
+        'Content-Type': null,
+      },
     });
   }
 }

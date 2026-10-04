@@ -1,344 +1,135 @@
-import { useState } from 'react'
-import type { CSSProperties } from 'react'
-import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
+import { useEffect, useState } from 'react'
+import { Alert, Button, Empty, Select, Tag } from 'antd'
+import { AuditOutlined, DatabaseOutlined, EyeOutlined, RiseOutlined } from '@ant-design/icons'
+import AuthGate from '../components/AuthGate'
 import {
-  BarChartOutlined,
-  FireOutlined,
-  LineChartOutlined,
-  RiseOutlined,
-  SafetyCertificateOutlined,
-  TagsOutlined,
-} from '@ant-design/icons'
-import { FrameCorners } from '../components/FrameCorners'
+  createReviewProposal,
+  getDiscoveryCandidate,
+  getDiscoveryEvidence,
+  listDiscoveryCandidates,
+  listDiscoveryRuns,
+  type DiscoveryCandidate,
+  type DiscoveryRun,
+} from '../services/platformApi'
 
-// Mock 新兴岗位数据
-const EMERGING_JOBS = [
-  {
-    id: 'ej1',
-    name: 'AIGC 算法工程师',
-    category: 'AI/算法',
-    trend: '上升',
-    growth: '+285%',
-    monthlyJobs: 142,
-    avgSalary: '30-50K',
-    isNew: true,
-    keySkills: ['Stable Diffusion', 'DALL-E', 'ControlNet', 'LoRA', 'Prompt Engineering'],
-    description: '负责生成式 AI 模型的研发和优化，包括文生图、图生图、视频生成等',
-    confidence: 92,
-  },
-  {
-    id: 'ej2',
-    name: 'LLM 应用工程师',
-    category: '大模型应用',
-    trend: '上升',
-    growth: '+198%',
-    monthlyJobs: 256,
-    avgSalary: '25-45K',
-    isNew: true,
-    keySkills: ['LangChain', 'RAG', 'Agent', 'Prompt 工程', 'Vector DB'],
-    description: '基于大语言模型开发智能应用，构建 Agent 系统和知识库问答',
-    confidence: 95,
-  },
-  {
-    id: 'ej3',
-    name: '云网智能运维员',
-    category: '运维/云计算',
-    trend: '上升',
-    growth: '+156%',
-    monthlyJobs: 89,
-    avgSalary: '20-35K',
-    isNew: true,
-    keySkills: ['Kubernetes', 'Prometheus', 'AIOps', '自动化运维', 'ServiceMesh'],
-    description: '利用 AI 技术进行智能运维，实现故障预测和自动修复',
-    confidence: 88,
-  },
-  {
-    id: 'ej4',
-    name: '数字孪生工程师',
-    category: '工业/物联网',
-    trend: '上升',
-    growth: '+124%',
-    monthlyJobs: 67,
-    avgSalary: '25-40K',
-    isNew: true,
-    keySkills: ['Unity3D', 'UE5', '物联网', '3D建模', '仿真技术'],
-    description: '构建物理实体的数字副本，实现虚实映射和预测性维护',
-    confidence: 85,
-  },
-  {
-    id: 'ej5',
-    name: '区块链开发工程师',
-    category: '区块链/Web3',
-    trend: '稳定',
-    growth: '+45%',
-    monthlyJobs: 134,
-    avgSalary: '30-55K',
-    isNew: false,
-    keySkills: ['Solidity', 'Web3.js', '智能合约', 'DeFi', 'NFT'],
-    description: '开发区块链应用和智能合约，构建去中心化系统',
-    confidence: 78,
-  },
-  {
-    id: 'ej6',
-    name: '量子计算工程师',
-    category: '前沿科技',
-    trend: '上升',
-    growth: '+89%',
-    monthlyJobs: 23,
-    avgSalary: '40-70K',
-    isNew: true,
-    keySkills: ['Qiskit', '量子算法', '量子电路', 'Python', '线性代数'],
-    description: '研究和开发量子算法，探索量子计算在实际场景的应用',
-    confidence: 72,
-  },
-]
-
-// 技能趋势时间线数据
-const SKILL_TIMELINE = [
-  { month: '2025-08', RAG: 45, LangChain: 32, Agent: 28, 'Prompt工程': 38 },
-  { month: '2025-09', RAG: 68, LangChain: 52, Agent: 41, 'Prompt工程': 55 },
-  { month: '2025-10', RAG: 95, LangChain: 78, Agent: 63, 'Prompt工程': 72 },
-  { month: '2025-11', RAG: 128, LangChain: 105, Agent: 89, 'Prompt工程': 98 },
-  { month: '2025-12', RAG: 165, LangChain: 142, Agent: 118, 'Prompt工程': 125 },
-  { month: '2026-01', RAG: 198, LangChain: 178, Agent: 156, 'Prompt工程': 152 },
-  { month: '2026-02', RAG: 234, LangChain: 215, Agent: 189, 'Prompt工程': 183 },
-]
-
-// 热门技能排行
-const HOT_SKILLS = [
-  { name: 'LangChain', count: 342, growth: '+185%', level: '前沿', color: '#e4b592' },
-  { name: 'RAG', count: 298, growth: '+168%', level: '前沿', color: '#e4b592' },
-  { name: 'Prompt 工程', count: 256, growth: '+145%', level: '核心', color: '#ee1212' },
-  { name: 'Agent 系统', count: 234, growth: '+132%', level: '前沿', color: '#e4b592' },
-  { name: 'Vector DB', count: 189, growth: '+98%', level: '核心', color: '#ee1212' },
-  { name: 'Stable Diffusion', count: 167, growth: '+215%', level: '前沿', color: '#e4b592' },
-  { name: 'Fine-tuning', count: 145, growth: '+76%', level: '核心', color: '#ee1212' },
-  { name: 'RLHF', count: 123, growth: '+112%', level: '前沿', color: '#e4b592' },
-]
+function message(error: unknown) {
+  const value = error as { apiMessage?: string; message?: string }
+  return value.apiMessage || value.message || '加载失败，请稍后重试'
+}
 
 export default function EmergingJobsPage() {
-  const [selectedJob, setSelectedJob] = useState(EMERGING_JOBS[0])
-  const [filterTrend, setFilterTrend] = useState<'all' | '上升' | '稳定'>('all')
-  const [sortBy, setSortBy] = useState<'growth' | 'jobs' | 'salary'>('growth')
+  return (
+    <AuthGate roles={['hr', 'admin']} title="新兴岗位发现" description="该页面包含市场 JD 证据和待审岗位定义，仅向 HR 与管理员开放。">
+      <DiscoveryWorkspace />
+    </AuthGate>
+  )
+}
 
-  const filteredJobs = EMERGING_JOBS.filter((job) => filterTrend === 'all' || job.trend === filterTrend)
+function DiscoveryWorkspace() {
+  const [runs, setRuns] = useState<DiscoveryRun[]>([])
+  const [runId, setRunId] = useState<string | undefined>()
+  const [candidates, setCandidates] = useState<DiscoveryCandidate[]>([])
+  const [selected, setSelected] = useState<DiscoveryCandidate | null>(null)
+  const [evidence, setEvidence] = useState<Array<Record<string, unknown>>>([])
+  const [loading, setLoading] = useState(true)
+  const [working, setWorking] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
 
-  const sortedJobs = [...filteredJobs].sort((a, b) => {
-    if (sortBy === 'growth') return parseInt(b.growth) - parseInt(a.growth)
-    if (sortBy === 'jobs') return b.monthlyJobs - a.monthlyJobs
-    return 0
-  })
+  const load = async (nextRunId?: string) => {
+    setLoading(true)
+    setError(null)
+    try {
+      const [runItems, candidateItems] = await Promise.all([
+        listDiscoveryRuns(),
+        listDiscoveryCandidates(nextRunId),
+      ])
+      setRuns(runItems)
+      setCandidates(candidateItems)
+      setRunId(nextRunId)
+      setSelected(null)
+      setEvidence([])
+    } catch (value) {
+      setError(message(value))
+    } finally {
+      setLoading(false)
+    }
+  }
 
-  const getTrendColor = (trend: string) => {
-    return trend === '上升' ? '#ee1212' : '#e4b592'
+  useEffect(() => { void load() }, [])
+
+  const inspect = async (candidate: DiscoveryCandidate) => {
+    setWorking(true)
+    setError(null)
+    try {
+      const [detail, rows] = await Promise.all([
+        getDiscoveryCandidate(candidate.id),
+        getDiscoveryEvidence(candidate.id),
+      ])
+      setSelected(detail)
+      setEvidence(rows)
+    } catch (value) {
+      setError(message(value))
+    } finally {
+      setWorking(false)
+    }
+  }
+
+  const submit = async () => {
+    if (!selected) return
+    setWorking(true)
+    setError(null)
+    try {
+      await createReviewProposal(selected.id)
+      setNotice('候选岗位已送入审核中心。')
+      setCandidates((items) => items.map((item) => item.id === selected.id ? { ...item, status: 'submitted' } : item))
+    } catch (value) {
+      setError(message(value))
+    } finally {
+      setWorking(false)
+    }
   }
 
   return (
-    <div className="page-shell page-shell--emerging min-h-screen pt-14">
-      <div className="page-shell__inner max-w-7xl mx-auto px-8 py-10">
-        <div className="page-head page-head--archive">
-          <FrameCorners />
-          <div className="page-head__icon">
-            <RiseOutlined />
-          </div>
-          <div className="page-head__copy">
-            <div className="page-head__eyebrow">Market radar / emerging roles</div>
-            <h1 className="page-head__title">新兴岗位发现</h1>
-            <p className="page-head__desc">追踪岗位增速、技能热度和需求置信度，提前识别新职业方向。</p>
-          </div>
-        </div>
-
-        {/* Stats cards */}
-        <div className="emerging-stats mb-8">
-          {[
-            { label: '新兴岗位', value: '18', suffix: '个', color: '#e4b592' },
-            { label: '月增长率', value: '+156', suffix: '%', color: '#ee1212' },
-            { label: '热门技能', value: '47', suffix: '项', color: '#fff3ea' },
-            { label: '数据置信度', value: '92', suffix: '%', color: '#dad0c8' },
-          ].map((stat, index) => (
-            <div
-              key={stat.label}
-              className={`metric-card archive-metric emerging-stat ${index === 0 ? 'emerging-stat--primary' : ''} animate-fade-up`}
-              style={{ '--accent': stat.color } as CSSProperties}
-            >
-              <div className="metric-card__label">{stat.label}</div>
-              <div className="metric-card__value" style={{ color: stat.color }}>
-                {stat.value}
-                <span className="text-base ml-1">{stat.suffix}</span>
-              </div>
-            </div>
+    <main className="workspace-page"><div className="workspace-wrap">
+      <header className="workspace-header">
+        <div className="workspace-header__icon"><RiseOutlined /></div>
+        <div><h1>新兴岗位发现</h1><p>从已归一化市场 JD 中查看候选技能组合，核验证据后再进入人工审核。</p></div>
+        <Select
+          allowClear
+          loading={loading}
+          value={runId}
+          placeholder="全部发现批次"
+          onChange={(value) => void load(value)}
+          options={runs.map((run) => ({ value: run.id, label: `${run.status} · ${new Date(run.created_at).toLocaleDateString('zh-CN')}` }))}
+        />
+      </header>
+      {(error || notice) && <Alert className="workspace-alert" type={error ? 'error' : 'success'} showIcon closable message={error || notice} onClose={() => { setError(null); setNotice(null) }} />}
+      <div className="discovery-layout">
+        <section className="candidate-browser" aria-busy={loading}>
+          <div className="section-title"><div><h2>候选技能组合</h2><p>分数仅表示市场共现证据，不等同于已确认的新岗位。</p></div><span>{candidates.length} 项</span></div>
+          {candidates.map((candidate) => (
+            <button key={candidate.id} className={`discovery-candidate${selected?.id === candidate.id ? ' is-active' : ''}`} onClick={() => void inspect(candidate)}>
+              <div><strong>{candidate.suggested_name || candidate.candidate_name || '未命名候选岗位'}</strong><span>{candidate.support_job_count} 条岗位 · {candidate.source_count} 个来源</span></div>
+              <div><b>{Math.round(Number(candidate.overall_candidate_score ?? candidate.quality_score ?? 0) * 100)}%</b><EyeOutlined /></div>
+            </button>
           ))}
-        </div>
-
-        <div className="emerging-workspace-grid">
-          {/* Left: Job list */}
-          <div className="emerging-job-rail">
-            <div className="archive-panel glass rounded-2xl p-4">
-              <FrameCorners />
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="font-outfit font-bold text-base text-[var(--text)]">岗位列表</h2>
-                <select
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value as any)}
-                  className="bg-[rgba(0,0,0,0.44)] border border-[var(--border)] px-2 py-1 text-xs text-[var(--text)] outline-none"
-                >
-                  <option value="growth">按增长率</option>
-                  <option value="jobs">按岗位数</option>
-                  <option value="salary">按薪资</option>
-                </select>
-              </div>
-
-              {/* Filter buttons */}
-              <div className="flex gap-2 mb-4">
-                {(['all', '上升', '稳定'] as const).map((f) => (
-                  <button
-                    key={f}
-                    className={`btn btn-sm ${filterTrend === f ? 'btn-primary' : 'btn-ghost'}`}
-                    onClick={() => setFilterTrend(f)}
-                  >
-                    {f === 'all' ? '全部' : f}
-                  </button>
-                ))}
-              </div>
-
-              <div className="emerging-job-list space-y-2 max-h-[600px] overflow-y-auto pr-2">
-                {sortedJobs.map((job) => (
-                  <div
-                    key={job.id}
-                    className={`archive-row market-archive-row glass rounded-xl p-3 cursor-pointer transition-all ${
-                      selectedJob.id === job.id ? 'ring-2 ring-space-cyan' : ''
-                    }`}
-                    onClick={() => setSelectedJob(job)}
-                  >
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex-1">
-                        <div className="font-outfit font-bold text-sm text-[var(--text)] mb-1">
-                          {job.isNew && <RiseOutlined className="text-[#ee1212] mr-1" />}
-                          {job.name}
-                        </div>
-                        <div className="text-xs text-[var(--text-dim)]">{job.category}</div>
-                      </div>
-                      <div className="text-right">
-                        <div
-                          className="font-jetbrains font-bold text-sm"
-                          style={{ color: getTrendColor(job.trend) }}
-                        >
-                          {job.growth}
-                        </div>
-                        <div className="text-[10px] text-[var(--text-dim)]">{job.monthlyJobs} 个职位</div>
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap gap-1">
-                      {job.keySkills.slice(0, 3).map((skill) => (
-                      <span key={skill} className="text-[10px] px-1.5 py-0.5 bg-[rgba(228,181,146,0.08)] text-[#e4b592] border border-[rgba(228,181,146,0.28)]">
-                          {skill}
-                        </span>
-                      ))}
-                      {job.keySkills.length > 3 && (
-                        <span className="text-[10px] text-[var(--text-dim)]">+{job.keySkills.length - 3}</span>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
+          {!loading && !candidates.length && <Empty description="当前筛选条件下没有候选岗位" />}
+        </section>
+        <section className="candidate-inspector">
+          {!selected ? <Empty description="选择一个候选岗位查看定义和证据" /> : <>
+            <div className="section-title"><div><h2>{selected.suggested_name || selected.candidate_name}</h2><p>{String(selected.disclaimer || '候选结果需经人工审核后才能发布。')}</p></div><Tag color="gold">{String(selected.novelty_status || selected.status || 'candidate')}</Tag></div>
+            <div className="score-strip">
+              {Object.entries((selected.scores as Record<string, number> | undefined) ?? {}).map(([key, value]) => <span key={key}><small>{key}</small><strong>{Math.round(value * 100)}%</strong></span>)}
             </div>
-          </div>
-
-          {/* Right: Details and charts */}
-          <div className="emerging-insight-stack space-y-6">
-            {/* Job detail */}
-            <div className="archive-panel glass rounded-2xl p-6">
-              <FrameCorners />
-              <div className="flex justify-between items-start mb-4">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-2">
-                    {selectedJob.isNew && <RiseOutlined className="text-xl text-[#ee1212]" />}
-                    <h2 className="font-outfit font-extrabold text-2xl text-[var(--text)]">{selectedJob.name}</h2>
-                  </div>
-                  <div className="flex items-center gap-4 text-sm text-[var(--text-dim)]">
-                    <span><TagsOutlined /> {selectedJob.category}</span>
-                    <span><BarChartOutlined /> {selectedJob.avgSalary}</span>
-                    <span><LineChartOutlined /> {selectedJob.monthlyJobs} 个职位/月</span>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div
-                    className="font-jetbrains font-black text-3xl mb-1"
-                    style={{ color: getTrendColor(selectedJob.trend) }}
-                  >
-                    {selectedJob.growth}
-                  </div>
-                  <div className="flex items-center gap-1 text-xs">
-                    <span className="text-[var(--text-dim)]">置信度</span>
-                    <span className="badge-conf">{selectedJob.confidence}%</span>
-                  </div>
-                </div>
-              </div>
-
-              <p className="text-sm text-[var(--text-dim)] mb-4 leading-relaxed">{selectedJob.description}</p>
-
-              <div>
-                <div className="text-sm font-medium text-[var(--text)] mb-2"><SafetyCertificateOutlined /> 核心技能要求</div>
-                <div className="flex flex-wrap gap-2">
-                  {selectedJob.keySkills.map((skill) => (
-                    <span key={skill} className="tag tag-purple">
-                      {skill}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Skill timeline chart */}
-            <div className="archive-panel chart-archive-panel glass rounded-2xl p-6">
-              <FrameCorners />
-              <h3 className="font-outfit font-bold text-base text-[var(--text)] mb-4"><LineChartOutlined /> 技能需求趋势（近7个月）</h3>
-              <ResponsiveContainer width="100%" height={250}>
-                <LineChart data={SKILL_TIMELINE}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,243,234,0.1)" />
-                  <XAxis dataKey="month" tick={{ fill: '#a49b92', fontSize: 11 }} />
-                  <YAxis tick={{ fill: '#a49b92', fontSize: 11 }} />
-                  <Tooltip
-                    contentStyle={{
-                      background: '#000000',
-                      border: '1px solid rgba(228,181,146,0.35)',
-                      borderRadius: 0,
-                    }}
-                    labelStyle={{ color: '#fff3ea' }}
-                  />
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Line type="monotone" dataKey="RAG" stroke="#e4b592" strokeWidth={2} dot={{ r: 3 }} />
-                  <Line type="monotone" dataKey="LangChain" stroke="#fff3ea" strokeWidth={2} dot={{ r: 3 }} />
-                  <Line type="monotone" dataKey="Agent" stroke="#dad0c8" strokeWidth={2} dot={{ r: 3 }} />
-                  <Line type="monotone" dataKey="Prompt工程" stroke="#ee1212" strokeWidth={2} dot={{ r: 3 }} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-
-            {/* Hot skills */}
-            <div className="archive-panel chart-archive-panel glass rounded-2xl p-6">
-              <FrameCorners />
-              <h3 className="font-outfit font-bold text-base text-[var(--text)] mb-4"><FireOutlined /> 热门技能排行</h3>
-              <ResponsiveContainer width="100%" height={280}>
-                <BarChart data={HOT_SKILLS} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,243,234,0.1)" />
-                  <XAxis type="number" tick={{ fill: '#a49b92', fontSize: 11 }} />
-                  <YAxis dataKey="name" type="category" tick={{ fill: '#a49b92', fontSize: 11 }} width={100} />
-                  <Tooltip
-                    contentStyle={{
-                      background: '#000000',
-                      border: '1px solid rgba(228,181,146,0.35)',
-                      borderRadius: 0,
-                    }}
-                    labelStyle={{ color: '#fff3ea' }}
-                  />
-                  <Bar dataKey="count" fill="#e4b592" radius={[0, 0, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        </div>
+            <div className="inspector-block"><h3>能力组合</h3><div className="capability-chip-list">{((selected.skills as Array<{ capability_id: string; canonical_name: string; skill_role: string }> | undefined) ?? []).map((skill) => <span key={skill.capability_id}>{skill.canonical_name} · {skill.skill_role}</span>)}</div></div>
+            <div className="inspector-block"><h3>原始技术词</h3><div className="capability-chip-list">{([...(selected.required_skill_names as string[] | undefined ?? []), ...(selected.bonus_skill_names as string[] | undefined ?? [])]).map((skill) => <span key={skill}>{skill}</span>)}</div></div>
+            <div className="inspector-block"><h3>行业场景</h3><div className="capability-chip-list">{((selected.industries as string[] | undefined) ?? []).map((industry) => <span key={industry}>{industry}</span>)}</div></div>
+            <div className="inspector-block"><h3><DatabaseOutlined /> 市场证据</h3>{evidence.map((row, index) => <div className="evidence-row" key={String(row.normalized_job_id ?? index)}><div><strong>{String(row.job_title || '未命名岗位')}</strong><span>{String(row.company_name || '公司未公开')} · {String(row.source_code || 'unknown')}</span></div><Tag>{Math.round(Number(row.evidence_weight || 0) * 100)}%</Tag></div>)}{!evidence.length && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无可见证据" />}</div>
+            <Button type="primary" size="large" icon={<AuditOutlined />} loading={working} onClick={() => void submit()}>创建人工审核提案</Button>
+          </>}
+        </section>
       </div>
-    </div>
+    </div></main>
   )
 }

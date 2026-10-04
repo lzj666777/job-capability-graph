@@ -1,131 +1,42 @@
-import axios from 'axios'
-import type { GraphData } from '../types/graph'
-import { API_BASE_URL } from './apiBase'
+import type { GraphData, Planet, Star } from '../types/graph'
+import request from '../utils/request'
 
-// API 响应格式
-interface ApiResponse<T> {
-  code: number
-  data: T
-  message: string
-}
-
-// 知识图谱 API 响应
-interface GraphApiNode {
+interface PublishedGraphNode {
   id: string
-  label: string
-  type: 'job' | 'skill'
-  level?: '基础' | '核心' | '前沿'
-  is_new?: boolean
+  type: 'domain' | 'job_role' | 'capability'
+  name: string
+  properties: Record<string, unknown>
 }
 
-interface GraphApiEdge {
+interface PublishedGraphEdge {
+  id: string
+  type: 'belongs_to' | 'requires' | 'bonus'
   source: string
   target: string
-  weight: number
+  properties: Record<string, unknown>
 }
 
-interface GraphApiResponse {
-  nodes: GraphApiNode[]
-  edges: GraphApiEdge[]
+interface PublishedGraphResponse {
+  graph_version: { id: string; version_no: number; published_at: string }
+  nodes: PublishedGraphNode[]
+  edges: PublishedGraphEdge[]
+  truncated: boolean
 }
 
-interface JDGraphSampleJob {
-  jobName: string
-  companyName: string
-  salary: string
-  city: string
-  education: string
-  workYear: string
-  source: string
-  url: string
-}
-
-interface JDGraphStar {
+interface EmergingGraphCandidate {
   id: string
-  name?: string
-  label?: string
-  domain?: string
-  color?: string
-  position?: [number, number, number]
-  size?: number
-  jobCount?: number
-  sources?: number
-  requiredSkills?: string[]
-  bonusSkills?: string[]
-  isEmerging?: boolean
-  sourceCounts?: Record<string, number>
-  sampleJobs?: JDGraphSampleJob[]
+  suggested_name: string
+  support_job_count: number
+  source_count: number
+  company_count: number
+  overall_candidate_score: number
+  required_skill_names?: string[]
+  bonus_skill_names?: string[]
+  industries?: string[]
+  status: string
+  source?: string
 }
 
-interface JDGraphPlanet {
-  id: string
-  name?: string
-  label?: string
-  type?: 'core' | 'foundation' | 'frontier'
-  starId: string
-  isRequired?: boolean
-  distance?: number
-  orbitRadius?: number
-  orbitTilt?: number
-  orbitPhase?: number
-  speed?: number
-  orbitSpeed?: number
-  size?: number
-  confidence?: number
-  color?: string
-  relatedJobs?: number
-  frequency?: number
-  isEmerging?: boolean
-}
-
-interface JDGraphResponse {
-  stars: JDGraphStar[]
-  planets: JDGraphPlanet[]
-  metadata?: GraphData['metadata']
-}
-
-// 技能数据
-interface SkillData {
-  name: string
-  level: '基础' | '核心' | '前沿'
-  proficiency?: number
-  weight?: number
-}
-
-// 简历解析响应
-interface ResumeParseResponse {
-  name: string
-  skills: SkillData[]
-}
-
-// 岗位解析响应
-interface JDParseResponse {
-  job_title: string
-  job_id: string
-  required_skills: SkillData[]
-}
-
-// 匹配响应
-interface MatchResponse {
-  match_score: number
-  matched_skills: Array<{ name: string; proficiency: number }>
-  gap_skills: Array<{
-    name: string
-    level: string
-    required_proficiency: number
-    user_proficiency: number
-  }>
-}
-
-// 技能趋势响应
-interface SkillTrendResponse {
-  skill_name: string
-  confidence_score: number
-  trend: '上升' | '稳定' | '下降'
-  evidence_count: number
-  timeline: Array<{ date: string; jd_count: number }>
-  warning: string | null
-}
 
 /**
  * 获取知识图谱数据
@@ -134,271 +45,162 @@ export async function fetchGraphData(params?: {
   category?: string
   level?: string
 }): Promise<GraphData> {
-  try {
-    const jdResponse = await axios.get<ApiResponse<JDGraphResponse>>(
-      `${API_BASE_URL}/api/v1/jd-graph`,
-      { params }
-    )
-
-    if (jdResponse.data.code === 200) {
-      return convertJdGraphData(jdResponse.data.data)
-    }
-
-    throw new Error(jdResponse.data.message || '加载 JD 图谱失败')
-  } catch (error) {
-    console.error('[API Error] fetchGraphData(jd-graph):', error)
-
-    try {
-      const legacyResponse = await axios.get<ApiResponse<GraphApiResponse>>(
-        `${API_BASE_URL}/api/v1/graph`,
-        { params }
-      )
-
-      if (legacyResponse.data.code !== 200) {
-        throw new Error(legacyResponse.data.message)
-      }
-
-      return convertLegacyGraphData(legacyResponse.data.data)
-    } catch (legacyError) {
-      console.error('[API Error] fetchGraphData(legacy):', legacyError)
-
-      try {
-        const localResponse = await axios.get<JDGraphResponse>('/jd_graph_data.json')
-        return convertJdGraphData(localResponse.data)
-      } catch (localError) {
-        console.error('[API Error] fetchGraphData(local):', localError)
-        throw localError
-      }
-    }
+  const [graphResult, emergingResult] = await Promise.allSettled([
+    request.get<PublishedGraphResponse>('/api/v1/graph', {
+      params: params?.category ? { domain_id: params.category } : undefined,
+    }),
+    fetchEmergingCandidates(),
+  ])
+  if (graphResult.status === 'rejected') {
+    throw graphResult.reason
   }
+
+  const graph = graphResult.value
+  const emerging = emergingResult.status === 'fulfilled' ? emergingResult.value : []
+  if (emergingResult.status === 'rejected') {
+    console.warn('Failed to load emerging jobs for graph:', emergingResult.reason)
+  }
+  return convertPublishedGraphData(graph, emerging)
 }
 
-/**
- * 简历解析
- */
-export async function parseResume(file: File): Promise<ResumeParseResponse> {
-  try {
-    const formData = new FormData()
-    formData.append('file', file)
-
-    const response = await axios.post<ApiResponse<ResumeParseResponse>>(
-      `${API_BASE_URL}/api/v1/resume/parse`,
-      formData,
-      {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      }
-    )
-
-    if (response.data.code !== 200) {
-      throw new Error(response.data.message)
-    }
-
-    return response.data.data
-  } catch (error) {
-    console.error('[API Error] parseResume:', error)
-    throw error
-  }
-}
-
-/**
- * 岗位描述解析
- */
-export async function parseJD(text: string): Promise<JDParseResponse> {
-  try {
-    const response = await axios.post<ApiResponse<JDParseResponse>>(
-      `${API_BASE_URL}/api/v1/jd/parse`,
-      { text }
-    )
-
-    if (response.data.code !== 200) {
-      throw new Error(response.data.message)
-    }
-
-    return response.data.data
-  } catch (error) {
-    console.error('[API Error] parseJD:', error)
-    throw error
-  }
-}
-
-/**
- * 人岗匹配
- */
-export async function matchJob(
-  userSkills: SkillData[],
-  jobId: string
-): Promise<MatchResponse> {
-  try {
-    const response = await axios.post<ApiResponse<MatchResponse>>(
-      `${API_BASE_URL}/api/v1/match`,
-      {
-        user_skills: userSkills,
-        job_id: jobId,
-      }
-    )
-
-    if (response.data.code !== 200) {
-      throw new Error(response.data.message)
-    }
-
-    return response.data.data
-  } catch (error) {
-    console.error('[API Error] matchJob:', error)
-    throw error
-  }
-}
-
-/**
- * 获取技能趋势
- */
-export async function fetchSkillTrend(
-  skillName: string
-): Promise<SkillTrendResponse> {
-  try {
-    const response = await axios.get<ApiResponse<SkillTrendResponse>>(
-      `${API_BASE_URL}/api/v1/skill/trend`,
-      {
-        params: { skill_name: skillName },
-      }
-    )
-
-    if (response.data.code !== 200) {
-      throw new Error(response.data.message)
-    }
-
-    return response.data.data
-  } catch (error) {
-    console.error('[API Error] fetchSkillTrend:', error)
-    throw error
-  }
-}
-
-function convertJdGraphData(apiData: JDGraphResponse): GraphData {
-  const stars = (apiData.stars || []).map((star, index) => {
-    const label = star.label || star.name || `岗位 ${index + 1}`
-    return {
-      id: star.id,
-      label,
-      name: star.name || label,
-      domain: star.domain || '岗位类别',
-      color: star.color || getJobColor(index, star.isEmerging),
-      position: normalizePosition(star.position, index),
-      size: normalizeStarSize(star.size),
-      requiredSkills: star.requiredSkills || [],
-      bonusSkills: star.bonusSkills || [],
-      sources: star.sources ?? star.jobCount ?? 0,
-      jobCount: star.jobCount ?? star.sources ?? 0,
-      isEmerging: star.isEmerging,
-      sourceCounts: star.sourceCounts,
-      sampleJobs: star.sampleJobs,
-    }
-  })
-
-  const starsById = new Map(stars.map((star) => [star.id, star]))
-  const planets = (apiData.planets || [])
-    .map((planet, index) => {
-      const label = planet.label || planet.name || `技能 ${index + 1}`
-      return {
-        id: planet.id,
-        starId: planet.starId,
-        label,
-        type: planet.type || 'foundation',
-        isRequired: Boolean(planet.isRequired),
-        orbitRadius: planet.orbitRadius ?? planet.distance ?? 4,
-        orbitTilt: planet.orbitTilt ?? Math.PI / 10,
-        orbitPhase: planet.orbitPhase ?? (index % 12) * 0.45,
-        orbitSpeed: planet.orbitSpeed ?? planet.speed ?? 0.14,
-        size: normalizePlanetSize(planet.size),
-        confidence: Math.round(planet.confidence ?? (planet.frequency ? Math.min(98, Math.max(52, planet.frequency)) : 68)),
-        color: planet.color || getSkillColor(planet.type || 'foundation'),
-      }
+async function fetchEmergingCandidates(): Promise<EmergingGraphCandidate[]> {
+  const values: EmergingGraphCandidate[] = []
+  for (let page = 1; page <= 10; page += 1) {
+    const chunk = await request.get<EmergingGraphCandidate[]>('/api/v1/graph/emerging-jobs', {
+      params: { page, page_size: 100 },
     })
-    .filter((planet) => Boolean(starsById.get(planet.starId)))
-
-  return {
-    stars,
-    planets,
-    metadata: apiData.metadata,
+    values.push(...chunk)
+    if (chunk.length < 100) break
   }
+  return values
 }
 
-function convertLegacyGraphData(apiData: GraphApiResponse): GraphData {
-  const { nodes, edges } = apiData
+function convertPublishedGraphData(
+  apiData: PublishedGraphResponse,
+  emergingCandidates: EmergingGraphCandidate[] = [],
+): GraphData {
+  const domains = new Map(apiData.nodes.filter((node) => node.type === 'domain').map((node) => [node.id, node]))
+  const roles = apiData.nodes.filter((node) => node.type === 'job_role')
+  const capabilities = new Map(apiData.nodes.filter((node) => node.type === 'capability').map((node) => [node.id, node]))
+  const roleDomain = new Map(
+    apiData.edges
+      .filter((edge) => edge.type === 'belongs_to' && roles.some((role) => role.id === edge.source))
+      .map((edge) => [edge.source, domains.get(edge.target)?.name || '未分类岗位']),
+  )
+  const requirementEdges = apiData.edges.filter((edge) => edge.type === 'requires' || edge.type === 'bonus')
 
-  // 分离岗位节点和技能节点
-  const jobNodes = nodes.filter((n) => n.type === 'job')
-  const skillNodes = nodes.filter((n) => n.type === 'skill')
-
-  // 构建岗位（恒星）数据
-  const stars = jobNodes.map((job, index) => {
-    // 找到该岗位的所有技能边
-    const jobEdges = edges.filter((e) => e.source === job.id)
-
-    // 按权重分类必备技能和加分技能
-    const requiredSkills: string[] = []
-    const bonusSkills: string[] = []
-
-    jobEdges.forEach((edge) => {
-      const skill = skillNodes.find((s) => s.id === edge.target)
-      if (skill) {
-        if (edge.weight >= 0.7) {
-          requiredSkills.push(skill.label)
-        } else {
-          bonusSkills.push(skill.label)
-        }
-      }
-    })
-
-    // 生成星图空间位置（螺旋分布）
-    const angle = (index / jobNodes.length) * Math.PI * 2
-    const radius = 5 + Math.random() * 3
+  const stars = roles.map((role, index) => {
+    const edges = requirementEdges.filter((edge) => edge.source === role.id)
+    const requiredSkills = edges
+      .filter((edge) => edge.type === 'requires')
+      .map((edge) => capabilities.get(edge.target)?.name)
+      .filter((name): name is string => Boolean(name))
+    const bonusSkills = edges
+      .filter((edge) => edge.type === 'bonus')
+      .map((edge) => capabilities.get(edge.target)?.name)
+      .filter((name): name is string => Boolean(name))
 
     return {
-      id: job.id,
-      label: job.label,
-      domain: job.is_new ? '新兴岗位' : '传统岗位',
-      color: getJobColor(index, job.is_new),
-      position: [
-        Math.cos(angle) * radius,
-        (Math.random() - 0.5) * 4,
-        Math.sin(angle) * radius,
-      ] as [number, number, number],
-      size: 1.0 + (requiredSkills.length / 10) * 0.3,
+      id: role.id,
+      label: role.name,
+      name: role.name,
+      domain: roleDomain.get(role.id) || '未分类岗位',
+      color: getJobColor(index),
+      position: normalizePosition(undefined, index),
+      size: normalizeStarSize(0.82 + edges.length * 0.045),
       requiredSkills,
       bonusSkills,
-      sources: jobEdges.length,
+      sources: edges.length,
+      jobCount: 1,
+      isEmerging: false,
     }
   })
 
-  // 构建行星（技能）数据
-  const planets = stars.flatMap((star) => {
-    const allSkills = [...star.requiredSkills, ...star.bonusSkills]
+  const planets = requirementEdges.flatMap((edge, index) => {
+    const capability = capabilities.get(edge.target)
+    if (!capability || !roles.some((role) => role.id === edge.source)) return []
+    const isRequired = edge.type === 'requires'
+    const skillType = typeof capability.properties.skill_type === 'string' ? capability.properties.skill_type : 'soft'
+    const type = !isRequired ? 'frontier' : skillType === 'hard' ? 'core' : 'foundation'
+    const importanceValue = Number(edge.properties.importance ?? 0)
+    const confidence = importanceValue <= 1 ? importanceValue * 100 : importanceValue * 20
 
-    return allSkills.map((skillName, index) => {
-      const isRequired = star.requiredSkills.includes(skillName)
-      const skillNode = skillNodes.find((s) => s.label === skillName)
-      const level = skillNode?.level || '核心'
+    return [{
+      id: edge.id,
+      starId: edge.source,
+      label: capability.name,
+      type: type as 'core' | 'foundation' | 'frontier',
+      isRequired,
+      orbitRadius: (isRequired ? 2.1 : 4.2) + (index % 7) * 0.42,
+      orbitTilt: Math.PI / (isRequired ? 8 : 10),
+      orbitPhase: (index % 16) * 0.39,
+      orbitSpeed: Math.max(0.05, (isRequired ? 0.24 : 0.13) - (index % 5) * 0.015),
+      size: isRequired ? 0.24 : 0.19,
+      confidence: Math.max(0, Math.min(100, Math.round(confidence || 60))),
+      color: getSkillColor(type === 'core' ? '核心' : type === 'frontier' ? '前沿' : '基础'),
+    }]
+  })
 
-      return {
-        id: `${star.id}_${skillName}`,
-        starId: star.id,
-        label: skillName,
-        type: mapLevel(level),
+  const emergingStars: Star[] = []
+  const emergingPlanets: Planet[] = []
+  emergingCandidates.forEach((candidate, index) => {
+    const requiredSkills = [...new Set(candidate.required_skill_names ?? [])].filter(Boolean)
+    const bonusSkills = [...new Set(candidate.bonus_skill_names ?? [])].filter(Boolean)
+    const allSkills = [...requiredSkills, ...bonusSkills]
+    const starId = `emerging:${candidate.id}`
+    emergingStars.push({
+      id: starId,
+      label: candidate.suggested_name,
+      name: candidate.suggested_name,
+      domain: '新兴岗位数据',
+      color: '#ee1212',
+      position: normalizePosition(undefined, stars.length + index),
+      size: normalizeStarSize(0.9 + Math.min(allSkills.length, 12) * 0.035),
+      requiredSkills,
+      bonusSkills,
+      sources: candidate.source_count || 1,
+      jobCount: candidate.support_job_count || 1,
+      isEmerging: true,
+      sourceCounts: { workbook_definition: candidate.source_count || 1 },
+    })
+    allSkills.forEach((skill, skillIndex) => {
+      const isRequired = skillIndex < requiredSkills.length
+      const type = isRequired ? 'core' : 'frontier'
+      emergingPlanets.push({
+        id: `${starId}:${isRequired ? 'required' : 'bonus'}:${normalizeLabel(skill)}`,
+        starId,
+        label: skill,
+        type,
         isRequired,
-        orbitRadius: isRequired ? 2 + index * 0.6 : 4 + (index - star.requiredSkills.length) * 0.7,
+        orbitRadius: (isRequired ? 2.1 : 4.2) + (skillIndex % 7) * 0.42,
         orbitTilt: Math.PI / (isRequired ? 8 : 10),
-        orbitPhase: (index / allSkills.length) * Math.PI * 2,
-        orbitSpeed: isRequired ? 0.3 - index * 0.05 : 0.15 - index * 0.02,
-        size: isRequired ? 0.25 : 0.2,
-        confidence: 70 + Math.floor(Math.random() * 28),
-        color: getSkillColor(level),
-      }
+        orbitPhase: (skillIndex % 16) * 0.39,
+        orbitSpeed: Math.max(0.05, (isRequired ? 0.24 : 0.13) - (skillIndex % 5) * 0.015),
+        size: isRequired ? 0.24 : 0.19,
+        confidence: Math.max(0, Math.min(100, Math.round((candidate.overall_candidate_score || 0.6) * 100))),
+        color: getSkillColor(type === 'core' ? '核心' : '前沿'),
+      })
     })
   })
 
-  return { stars, planets }
+  const allStars = [...emergingStars, ...stars]
+  const allPlanets = [...emergingPlanets, ...planets]
+  return {
+    stars: allStars,
+    planets: allPlanets,
+    metadata: {
+      total_jobs: allStars.reduce((sum, star) => sum + (star.jobCount ?? 0), 0),
+      total_categories: domains.size + (emergingStars.length ? 1 : 0),
+      total_skills: new Set(allPlanets.map((planet) => planet.label)).size,
+      total_planets: allPlanets.length,
+      generated_at: apiData.graph_version.published_at,
+      featured_star_ids: allStars.slice(0, 8).map((star) => star.id),
+    },
+  }
+}
+
+function normalizeLabel(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, '-')
 }
 
 function normalizePosition(
@@ -430,18 +232,6 @@ function normalizeStarSize(size?: number): number {
   return Math.max(0.72, Math.min(size, 1.8))
 }
 
-function normalizePlanetSize(size?: number): number {
-  if (!size || Number.isNaN(size)) {
-    return 0.2
-  }
-
-  if (size > 1) {
-    return Math.max(0.16, Math.min(size / 16, 0.28))
-  }
-
-  return Math.max(0.16, Math.min(size, 0.28))
-}
-
 /**
  * 获取岗位颜色
  */
@@ -464,24 +254,4 @@ function getSkillColor(level: string): string {
     前沿: '#e4b592',
   }
   return colorMap[level] || '#ee1212'
-}
-
-/**
- * 映射技能等级
- */
-function mapLevel(level: string): 'core' | 'foundation' | 'frontier' {
-  const levelMap: Record<string, 'core' | 'foundation' | 'frontier'> = {
-    基础: 'foundation',
-    核心: 'core',
-    前沿: 'frontier',
-  }
-  return levelMap[level] || 'core'
-}
-
-export default {
-  fetchGraphData,
-  parseResume,
-  parseJD,
-  matchJob,
-  fetchSkillTrend,
 }

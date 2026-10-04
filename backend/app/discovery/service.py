@@ -278,7 +278,7 @@ async def candidate_evidence(
             .limit(page_size)
         )
     ).all()
-    return [
+    evidence = [
         {
             "normalized_job_id": normalized.id,
             "batch_id": raw.batch_id,
@@ -293,6 +293,36 @@ async def candidate_evidence(
             "representative": evidence.representative,
         }
         for evidence, normalized, raw, batch in rows
+    ]
+    if evidence:
+        return evidence
+
+    # Workbook-backed definitions do not have row-level market postings.  Expose
+    # their declared representative companies and cities as clearly labelled
+    # source evidence instead of presenting a misleading empty inspector.
+    payload = dict(candidate.definition_payload)
+    companies = [
+        value for value in payload.get("representative_companies", []) if value
+    ]
+    cities = [value for value in payload.get("representative_cities", []) if value]
+    industries = [value for value in payload.get("industries", []) if value]
+    return [
+        {
+            "normalized_job_id": None,
+            "batch_id": None,
+            "job_title": candidate.suggested_name,
+            "company_name": company,
+            "source_code": "workbook_definition",
+            "source_url": None,
+            "published_at": None,
+            "collected_at": None,
+            "quality_score": 100.0,
+            "evidence_weight": 1.0,
+            "representative": index < 3,
+            "city": cities[index] if index < len(cities) else None,
+            "industry": industries[index] if index < len(industries) else None,
+        }
+        for index, company in enumerate(companies[:20])
     ]
 
 
@@ -327,6 +357,17 @@ def _run_data(discovery_run: DiscoveryRun, processing_run: ProcessingRun) -> dic
 
 
 def _candidate_list_data(candidate: SkillCombinationCandidate) -> dict:
+    payload = dict(candidate.definition_payload)
+    raw_required = [
+        value.get("skill")
+        for value in payload.get("required_skills", [])
+        if isinstance(value, dict) and value.get("skill")
+    ]
+    raw_bonus = [
+        value.get("skill")
+        for value in payload.get("bonus_skills", [])
+        if isinstance(value, dict) and value.get("skill")
+    ]
     return {
         "id": candidate.id,
         "discovery_run_id": candidate.discovery_run_id,
@@ -338,4 +379,16 @@ def _candidate_list_data(candidate: SkillCombinationCandidate) -> dict:
         "overall_candidate_score": float(candidate.overall_candidate_score),
         "status": candidate.status,
         "created_at": candidate.created_at,
+        "source": payload.get("source"),
+        "cluster_id": payload.get("cluster_id"),
+        "required_skill_names": list(
+            dict.fromkeys(
+                [*raw_required, *payload.get("required_capability_names", [])]
+            )
+        ),
+        "bonus_skill_names": list(
+            dict.fromkeys([*raw_bonus, *payload.get("bonus_capability_names", [])])
+        ),
+        "industries": payload.get("industries", []),
+        "responsibilities": payload.get("responsibilities", []),
     }

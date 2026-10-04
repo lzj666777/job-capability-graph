@@ -413,8 +413,8 @@ async def test_create_recommendations_persists_complete_atomic_run(
     assert created.run.resume_profile_id == context.profile.id
     assert created.run.graph_version_id == context.graph.id
     assert created.run.catalog_version_id == context.catalog.id
-    assert created.run.weight_version == "match_weights_v1"
-    assert created.run.weight_snapshot["algorithm"] == "exact_capability_match_v1"
+    assert created.run.weight_version == "translation_weights_v2"
+    assert created.run.weight_snapshot["algorithm"] == "capability_translation_v2"
     assert created.run.result_count == 2
     assert (
         created.run.high_count + created.run.medium_count + created.run.low_count == 2
@@ -442,7 +442,7 @@ async def test_create_recommendations_persists_complete_atomic_run(
         "resume_profile_id": str(context.profile.id),
         "graph_version_id": str(context.graph.id),
         "catalog_version_id": str(context.catalog.id),
-        "weight_version": "match_weights_v1",
+        "weight_version": "translation_weights_v2",
         "result_count": 2,
     }
 
@@ -652,7 +652,7 @@ async def test_current_weight_version_does_not_reuse_legacy_run(db_session) -> N
 
     assert created.reused is False
     assert created.run.id != legacy.id
-    assert created.run.weight_version == "match_weights_v1"
+    assert created.run.weight_version == "translation_weights_v2"
 
 
 async def test_create_recommendations_rolls_back_run_results_and_audit(

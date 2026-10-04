@@ -46,4 +46,5 @@ async def generate_growth_path(
         },
         max_output_tokens=MAX_OUTPUT_TOKENS,
         request_id=request_id,
+        reasoning_effort="low",
     )

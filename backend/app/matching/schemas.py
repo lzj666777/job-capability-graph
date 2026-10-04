@@ -72,6 +72,15 @@ class EvidenceDimensionRead(StrictSchema):
     matched_importance: float
 
 
+class TranslationDimensionRead(StrictSchema):
+    score: float
+    status: Literal["evaluated"]
+    matched_count: int
+    total_count: int
+    evidence_weighted_importance: float
+    total_importance: float
+
+
 class ExperienceDimensionRead(StrictSchema):
     score: float
     status: Literal["not_required", "unknown", "unmet", "partial", "satisfied"]
@@ -99,6 +108,9 @@ class DimensionScoresRead(StrictSchema):
     skill_evidence_quality: EvidenceDimensionRead
     experience: ExperienceDimensionRead
     education: EducationDimensionRead
+    comprehensive_quality: TranslationDimensionRead | None = None
+    knowledge_foundation: TranslationDimensionRead | None = None
+    hard_skill_gap: CoverageDimensionRead | None = None
     lgf: LGFDimensionRead | None = None
 
 

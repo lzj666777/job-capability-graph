@@ -1,7 +1,6 @@
-import asyncio
 from collections.abc import Awaitable, Callable
 
-from app.infrastructure.database import SessionFactory
+from app.infrastructure.database import SessionFactory, run_worker
 from app.processing.service import (
     clean_expired_sessions,
     clean_unattached_files,
@@ -18,19 +17,19 @@ async def _with_session(operation: Callable[..., Awaitable[int]]) -> int:
 
 @celery_app.task(name="app.redispatch_pending_runs")
 def redispatch_pending_runs_task() -> int:
-    return asyncio.run(_with_session(redispatch_pending_runs))
+    return run_worker(_with_session(redispatch_pending_runs))
 
 
 @celery_app.task(name="app.mark_stale_runs")
 def mark_stale_runs_task() -> int:
-    return asyncio.run(_with_session(mark_stale_runs))
+    return run_worker(_with_session(mark_stale_runs))
 
 
 @celery_app.task(name="app.clean_expired_sessions")
 def clean_expired_sessions_task() -> int:
-    return asyncio.run(_with_session(clean_expired_sessions))
+    return run_worker(_with_session(clean_expired_sessions))
 
 
 @celery_app.task(name="app.clean_unattached_files")
 def clean_unattached_files_task() -> int:
-    return asyncio.run(_with_session(clean_unattached_files))
+    return run_worker(_with_session(clean_unattached_files))

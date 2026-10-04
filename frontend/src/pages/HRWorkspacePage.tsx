@@ -1,607 +1,295 @@
-import { useState, useRef } from 'react'
-import {
-  ArrowLeftOutlined,
-  ArrowRightOutlined,
-  CheckCircleOutlined,
-  CloseCircleOutlined,
-  CloudUploadOutlined,
-  DeleteOutlined,
-  DownloadOutlined,
-  FileTextOutlined,
-  FolderOpenOutlined,
-  TeamOutlined,
-} from '@ant-design/icons'
+import { useEffect, useMemo, useState } from 'react'
+import { Alert, Button, Empty, Input, InputNumber, Select, Slider, Table, Tabs, Tag, Upload } from 'antd'
+import type { UploadFile } from 'antd'
+import { CheckCircleOutlined, CloudUploadOutlined, FileSearchOutlined, FolderAddOutlined, ReloadOutlined, TeamOutlined, UserOutlined } from '@ant-design/icons'
+import AuthGate from '../components/AuthGate'
 import { FrameCorners } from '../components/FrameCorners'
+import {
+  confirmRecruitmentRequirements, createRecruitmentMatchRun, createRecruitmentProject,
+  getRecruitmentMatchResult, getRecruitmentProject, listRecruitmentCandidates,
+  listRecruitmentMatchResults, listRecruitmentMatchRuns, listRecruitmentProjects,
+  replaceRecruitmentRequirements, submitRecruitmentJd, uploadRecruitmentCandidates,
+  waitForRun, type EducationLevel, type RecruitmentCandidate, type RecruitmentDraftSkill,
+  type RecruitmentMatchResult, type RecruitmentMatchRun, type RecruitmentProject,
+  type RequirementPayload,
+} from '../services/platformApi'
+import type { ProcessingRunResponse } from '../services/resumeWorkflowApi'
 
-type Step = 0 | 1 | 2 | 3
+const { Dragger } = Upload
+const EDUCATION_OPTIONS = [
+  ['high_school', '高中'], ['associate', '专科'], ['bachelor', '本科'], ['master', '硕士'],
+  ['doctor', '博士'], ['other', '其他'], ['unknown', '未知'],
+].map(([value, label]) => ({ value, label }))
 
-// Mock 候选人数据
-const MOCK_CANDIDATES = [
-  {
-    id: 'c1',
-    name: '张三',
-    match: 92,
-    badge: 'A',
-    education: '硕士',
-    experience: '3-5年',
-    skills: ['Python', 'PyTorch', 'Transformer', 'LangChain', 'RAG'],
-    missingSkills: ['Kubernetes', 'MLflow'],
-    status: 'uploaded',
-  },
-  {
-    id: 'c2',
-    name: '李四',
-    match: 85,
-    badge: 'A',
-    education: '本科',
-    experience: '5-10年',
-    skills: ['Python', 'TensorFlow', 'Kubernetes', 'Docker', 'SQL'],
-    missingSkills: ['Transformer', 'RAG', 'LangChain'],
-    status: 'uploaded',
-  },
-  {
-    id: 'c3',
-    name: '王五',
-    match: 78,
-    badge: 'B',
-    education: '硕士',
-    experience: '1-3年',
-    skills: ['Python', 'PyTorch', 'OpenCV', 'YOLO'],
-    missingSkills: ['Transformer', 'NLP', 'LangChain', 'RAG'],
-    status: 'uploaded',
-  },
-  {
-    id: 'c4',
-    name: '赵六',
-    match: 68,
-    badge: 'B',
-    education: '本科',
-    experience: '1-3年',
-    skills: ['Java', 'Spring', 'MySQL', 'Redis'],
-    missingSkills: ['Python', 'PyTorch', 'Transformer', 'AI基础'],
-    status: 'uploaded',
-  },
-]
+function errorMessage(error: unknown) {
+  const value = error as { apiMessage?: string; message?: string }
+  return value.apiMessage || value.message || '请求失败，请稍后重试'
+}
 
-const HR_STEPS = ['创建项目', '批量上传', '候选排名', '对比分析']
+function formatDate(value?: string | null) {
+  return value ? new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : '暂无'
+}
 
-// Ring chart component
-function Ring({ v, size = 48, color = '#e4b592' }: { v: number; size?: number; color?: string }) {
-  const r = (size - 6) / 2
-  const c = 2 * Math.PI * r
-  return (
-    <div className="relative inline-flex items-center justify-center" style={{ width: size, height: size }}>
-      <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(255,243,234,0.12)" strokeWidth="4" />
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={r}
-          fill="none"
-          stroke={color}
-          strokeWidth="4"
-          strokeDasharray={`${(v / 100) * c} ${c}`}
-          strokeLinecap="round"
-          style={{ filter: `drop-shadow(0 0 4px ${color})` }}
-        />
-      </svg>
-      <div className="absolute font-jetbrains font-bold text-[11px]" style={{ color }}>
-        {v}
-      </div>
-    </div>
+function requirementsFrom(project: RecruitmentProject): RecruitmentDraftSkill[] {
+  const draft = project.jd_draft_payload
+  return [...(draft.requirements ?? []), ...(draft.mapped_skills ?? [])].filter(
+    (item, index, values) => item.capability_id && values.findIndex((value) => value.capability_id === item.capability_id) === index,
   )
 }
 
-// Upload progress component
-function UploadProgress({ files, progress }: { files: File[]; progress: number[] }) {
-  return (
-    <div className="space-y-2">
-      {files.map((file, i) => (
-        <div key={i} className="archive-row glass rounded-lg p-3 flex items-center gap-3">
-          <div className="file-state-icon">
-            {progress[i] === 100 ? <CheckCircleOutlined /> : <FileTextOutlined />}
-          </div>
-          <div className="flex-1">
-            <div className="text-sm text-[var(--text)] mb-1">{file.name}</div>
-            <div className="prog-track h-1">
-              <div
-                className="prog-fill transition-all duration-300"
-                style={{
-                  width: `${progress[i]}%`,
-                  background: progress[i] === 100 ? '#dad0c8' : 'linear-gradient(90deg, #ee1212, #e4b592)',
-                }}
-              />
-            </div>
-          </div>
-          <span className="font-jetbrains text-xs text-[var(--text-dim)]">{Math.round(progress[i])}%</span>
-        </div>
-      ))}
-    </div>
-  )
+function responsibilitiesFrom(project: RecruitmentProject) {
+  return (project.jd_draft_payload.responsibilities ?? []).map((item) => typeof item === 'string' ? item : item.text)
 }
 
 export default function HRWorkspacePage() {
-  const [step, setStep] = useState<Step>(0)
+  return (
+    <AuthGate roles={['hr', 'admin']} title="HR 工作台" description="使用 HR 或管理员账号登录，继续岗位要求和候选人匹配。">
+      <HRWorkspace />
+    </AuthGate>
+  )
+}
+
+function HRWorkspace() {
+  const [projects, setProjects] = useState<RecruitmentProject[]>([])
+  const [projectId, setProjectId] = useState<string | null>(null)
+  const [project, setProject] = useState<RecruitmentProject | null>(null)
+  const [activeTab, setActiveTab] = useState('jd')
+  const [loading, setLoading] = useState(true)
+  const [working, setWorking] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+  const [newTitle, setNewTitle] = useState('')
+  const [newDescription, setNewDescription] = useState('')
+  const [jdText, setJdText] = useState('')
+  const [jdFile, setJdFile] = useState<UploadFile[]>([])
+  const [task, setTask] = useState<ProcessingRunResponse | null>(null)
+  const [requirements, setRequirements] = useState<RecruitmentDraftSkill[]>([])
+  const [unmapped, setUnmapped] = useState<RecruitmentDraftSkill[]>([])
   const [jobTitle, setJobTitle] = useState('')
-  const [jobDescription, setJobDescription] = useState('')
-  const [files, setFiles] = useState<File[]>([])
-  const [uploading, setUploading] = useState(false)
-  const [uploadProgress, setUploadProgress] = useState<number[]>([])
-  const [candidates] = useState(MOCK_CANDIDATES)
-  const [selectedCandidates, setSelectedCandidates] = useState<string[]>([])
-  const [sortBy, setSortBy] = useState<'match' | 'education' | 'experience'>('match')
-  const [drag, setDrag] = useState(false)
-  const fileRef = useRef<HTMLInputElement>(null)
+  const [summary, setSummary] = useState('')
+  const [responsibilities, setResponsibilities] = useState<string[]>([])
+  const [education, setEducation] = useState<EducationLevel | null>(null)
+  const [experienceMonths, setExperienceMonths] = useState<number | null>(null)
+  const [candidateFiles, setCandidateFiles] = useState<UploadFile[]>([])
+  const [candidates, setCandidates] = useState<RecruitmentCandidate[]>([])
+  const [matchRuns, setMatchRuns] = useState<RecruitmentMatchRun[]>([])
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
+  const [results, setResults] = useState<RecruitmentMatchResult[]>([])
+  const [selectedResult, setSelectedResult] = useState<RecruitmentMatchResult | null>(null)
 
-  const handleFileSelect = (newFiles: FileList | null) => {
-    if (!newFiles) return
-    const fileArray = Array.from(newFiles)
-    setFiles((prev) => [...prev, ...fileArray])
+  const hydrateDraft = (value: RecruitmentProject) => {
+    const draft = value.jd_draft_payload
+    setJobTitle(draft.job_title || value.title)
+    setSummary(draft.summary || '')
+    setResponsibilities(responsibilitiesFrom(value))
+    setEducation(draft.minimum_education_level || null)
+    setExperienceMonths(draft.recommended_experience_months ?? null)
+    setRequirements(requirementsFrom(value))
+    setUnmapped(draft.unmapped_skills ?? [])
   }
 
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault()
-    setDrag(false)
-    handleFileSelect(e.dataTransfer.files)
+  const loadProject = async (id: string) => {
+    const [detail, candidateItems, runItems] = await Promise.all([
+      getRecruitmentProject(id), listRecruitmentCandidates(id), listRecruitmentMatchRuns(id),
+    ])
+    setProject(detail)
+    setCandidates(candidateItems)
+    setMatchRuns(runItems)
+    setProjectId(id)
+    hydrateDraft(detail)
+    const runId = selectedRunId && runItems.some((run) => run.id === selectedRunId) ? selectedRunId : runItems[0]?.id
+    setSelectedRunId(runId || null)
+    setResults(runId ? await listRecruitmentMatchResults(id, runId) : [])
   }
 
-  const startBatchUpload = async () => {
-    if (files.length === 0) return
-
-    setUploading(true)
-    const progress = Array.from({ length: files.length }, () => 0)
-    setUploadProgress(progress)
-
-    // Simulate upload progress for each file
-    const intervals = files.map((_, index) => {
-      return setInterval(() => {
-        setUploadProgress((prev) => {
-          const newProgress = [...prev]
-          newProgress[index] = Math.min(newProgress[index] + Math.random() * 15 + 5, 100)
-          if (newProgress[index] >= 100) {
-            clearInterval(intervals[index])
-          }
-          return newProgress
-        })
-      }, 200)
-    })
-
-    // Wait for all uploads to complete
-    setTimeout(() => {
-      intervals.forEach((iv) => clearInterval(iv))
-      setUploading(false)
-      setStep(2)
-    }, 3000)
-
-    // TODO: 实际上传调用
-    // for (const file of files) {
-    //   await parseResume(file)
-    // }
+  const loadProjects = async (preferredId?: string) => {
+    const items = await listRecruitmentProjects()
+    setProjects(items)
+    const nextId = preferredId || projectId || items[0]?.id || null
+    setProjectId(nextId)
+    if (nextId) await loadProject(nextId)
+    else setProject(null)
   }
 
-  const toggleCandidate = (id: string) => {
-    setSelectedCandidates((prev) =>
-      prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]
-    )
+  useEffect(() => {
+    loadProjects().catch((value) => setError(errorMessage(value))).finally(() => setLoading(false))
+    // Initial load only; later refreshes are explicit to preserve the selected snapshot.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const createProject = async () => {
+    if (!newTitle.trim()) return
+    setWorking(true); setError(null)
+    try {
+      const created = await createRecruitmentProject({ title: newTitle.trim(), description: newDescription.trim() || null })
+      setNewTitle(''); setNewDescription('')
+      await loadProjects(created.id)
+      setNotice('招聘项目已创建，请提交 JD 进行解析。'); setActiveTab('jd')
+    } catch (value) { setError(errorMessage(value)) } finally { setWorking(false) }
   }
 
-  const getBadgeColor = (badge: string) => {
-    switch (badge) {
-      case 'A':
-        return '#dad0c8'
-      case 'B':
-        return '#e4b592'
-      case 'C':
-        return '#ee1212'
-      default:
-        return '#a49b92'
-    }
+  const submitJd = async () => {
+    if (!project || (!jdText.trim() && !jdFile[0]?.originFileObj)) return
+    setWorking(true); setError(null); setNotice(null); setTask(null)
+    try {
+      const response = await submitRecruitmentJd(project.id, { text: jdText.trim() || undefined, file: jdFile[0]?.originFileObj as File | undefined })
+      await waitForRun(response.run_id, setTask)
+      await loadProject(project.id)
+      setNotice('JD 已解析为可编辑要求，请校准后确认。'); setActiveTab('requirements')
+    } catch (value) { setError(errorMessage(value)) } finally { setWorking(false) }
   }
 
-  const sortedCandidates = [...candidates].sort((a, b) => {
-    if (sortBy === 'match') return b.match - a.match
-    if (sortBy === 'education') return a.education.localeCompare(b.education)
-    return 0
+  const requirementPayload = (): RequirementPayload => ({
+    job_title: jobTitle.trim(), summary: summary.trim() || null,
+    responsibilities: responsibilities.map((item) => item.trim()).filter(Boolean),
+    minimum_education_level: education, recommended_experience_months: experienceMonths,
+    requirements: requirements.flatMap((item) => item.capability_id ? [{
+      capability_id: item.capability_id, requirement_type: item.requirement_type,
+      importance: Math.max(0.01, Math.min(1, item.importance || 0.5)),
+    }] : []),
+    unmapped_skills: unmapped.flatMap((item) => {
+      const rawName = item.raw_name || item.name
+      return rawName?.trim() ? [{ raw_name: rawName.trim(), requirement_type: item.requirement_type }] : []
+    }),
   })
 
+  const saveAndConfirm = async () => {
+    if (!project || !jobTitle.trim()) return
+    if (!requirements.some((item) => item.capability_id && item.requirement_type === 'required')) {
+      setError('至少保留一个已映射的必备能力'); return
+    }
+    setWorking(true); setError(null)
+    try {
+      await replaceRecruitmentRequirements(project.id, requirementPayload())
+      const confirmed = await confirmRecruitmentRequirements(project.id)
+      await loadProject(project.id)
+      setNotice(confirmed.reused ? '要求未变化，已复用原确认版本。' : `已确认第 ${confirmed.requirements_revision} 版岗位要求。`)
+      setActiveTab('candidates')
+    } catch (value) { setError(errorMessage(value)) } finally { setWorking(false) }
+  }
+
+  const uploadCandidates = async () => {
+    if (!project) return
+    const files = candidateFiles.flatMap((item) => item.originFileObj ? [item.originFileObj as File] : [])
+    if (files.length < 1 || files.length > 20) return
+    setWorking(true); setError(null); setTask(null)
+    try {
+      const response = await uploadRecruitmentCandidates(project.id, files)
+      await waitForRun(response.run_id, setTask)
+      setCandidateFiles([]); await loadProject(project.id)
+      setNotice('候选人解析已完成；失败项会在匹配快照中标记为跳过。')
+    } catch (value) { setError(errorMessage(value)) } finally { setWorking(false) }
+  }
+
+  const runMatch = async () => {
+    if (!project) return
+    setWorking(true); setError(null)
+    try {
+      const response = await createRecruitmentMatchRun(project.id)
+      setSelectedRunId(response.run.id); setResults(response.items)
+      setMatchRuns(await listRecruitmentMatchRuns(project.id))
+      setNotice(response.reused ? '输入未变化，已复用上次匹配快照。' : '已生成新的候选人匹配快照。'); setActiveTab('results')
+    } catch (value) { setError(errorMessage(value)) } finally { setWorking(false) }
+  }
+
+  const showResult = async (row: RecruitmentMatchResult) => {
+    if (!project || !selectedRunId) return
+    try { setSelectedResult(await getRecruitmentMatchResult(project.id, selectedRunId, row.candidate_id)) }
+    catch (value) { setError(errorMessage(value)) }
+  }
+
+  const switchRun = async (runId: string) => {
+    if (!project) return
+    setSelectedRunId(runId); setSelectedResult(null)
+    setResults(await listRecruitmentMatchResults(project.id, runId))
+  }
+
+  const readyCount = candidates.filter((candidate) => candidate.parse_status === 'ready').length
+  const hasConfirmedRequirements = Boolean(project?.confirmed_requirement_sha256)
+  const requirementStats = useMemo(() => ({
+    required: requirements.filter((item) => item.requirement_type === 'required').length,
+    bonus: requirements.filter((item) => item.requirement_type === 'bonus').length,
+  }), [requirements])
+
   return (
-    <div className="page-shell page-shell--hr min-h-screen pt-14">
-      <div className="page-shell__inner max-w-6xl mx-auto px-8 py-10">
-        <div className="page-head page-head--archive">
-          <FrameCorners />
-          <div className="page-head__icon">
-            <TeamOutlined />
+    <main className="workspace-page"><div className="workspace-wrap">
+      <header className="workspace-header">
+        <div className="workspace-header__icon"><TeamOutlined /></div>
+        <div><h1>HR 招聘匹配工作台</h1><p>从 JD 解析、要求确认到候选人排名，全程使用后端不可变快照。</p></div>
+        <Button icon={<ReloadOutlined />} loading={loading} onClick={() => loadProjects().catch((value) => setError(errorMessage(value)))}>刷新</Button>
+      </header>
+      {(error || notice) && <Alert className="workspace-alert" closable onClose={() => { setError(null); setNotice(null) }} type={error ? 'error' : 'success'} showIcon message={error || notice} />}
+      <div className="workspace-layout">
+        <aside className="workspace-sidebar">
+          <h2>招聘项目</h2>
+          <div className="project-create">
+            <Input value={newTitle} onChange={(event) => setNewTitle(event.target.value)} placeholder="项目名称" maxLength={200} />
+            <Input.TextArea value={newDescription} onChange={(event) => setNewDescription(event.target.value)} placeholder="项目说明（可选）" autoSize={{ minRows: 2, maxRows: 4 }} maxLength={5000} />
+            <Button block icon={<FolderAddOutlined />} disabled={!newTitle.trim()} loading={working} onClick={() => void createProject()}>创建项目</Button>
           </div>
-          <div className="page-head__copy">
-            <div className="page-head__eyebrow">Hiring ops / candidate field</div>
-            <h1 className="page-head__title">HR 工作台</h1>
-            <p className="page-head__desc">解析 JD、批量处理简历，并把候选人按证据和匹配度排序。</p>
+          <div className="project-list">
+            {projects.map((item) => <button key={item.id} className={item.id === projectId ? 'is-active' : ''} onClick={() => loadProject(item.id).catch((value) => setError(errorMessage(value)))}><strong>{item.title}</strong><span>{item.requirements_revision ? `要求 v${item.requirements_revision}` : '待确认要求'} · {item.candidate_counts.total ?? 0} 人</span></button>)}
+            {!loading && projects.length === 0 && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="还没有招聘项目" />}
           </div>
-        </div>
-
-        {/* Stepper */}
-        <div className="console-stepper archive-stepper mb-10">
-          {HR_STEPS.map((label, i) => (
-            <div key={label} className="console-stepper__item">
-              <div
-                className={`step-dot ${i < step ? 'step-done' : i === step ? 'step-active' : 'step-idle'}`}
-                onClick={() => i < step && setStep(i as Step)}
-                style={{ cursor: i < step ? 'pointer' : 'default' }}
-              >
-                {i < step ? '✓' : i + 1}
-              </div>
-              <div className="console-stepper__copy ml-2.5 flex-1 min-w-0">
-                <div className="console-stepper__meta">STEP {String(i + 1).padStart(2, '0')}</div>
-                <div
-                  className="console-stepper__label font-inter font-semibold text-[13px]"
-                  style={{ color: i === step ? 'var(--text)' : i < step ? '#dad0c8' : 'var(--text-dim)' }}
-                >
-                  {label}
+        </aside>
+        <section className="workspace-content">
+          {!project ? <Empty description="创建或选择一个招聘项目" /> : <>
+            <div className="project-summary"><div><strong>{project.title}</strong><span>{project.description || '未填写项目说明'}</span></div><div className="project-summary__metrics"><span><b>{project.requirements_revision}</b>要求版本</span><span><b>{readyCount}</b>可匹配候选人</span><span><b>{matchRuns.length}</b>匹配快照</span></div></div>
+            <Tabs activeKey={activeTab} onChange={setActiveTab} items={[
+              { key: 'jd', label: '1. JD 解析', children: <div className="workflow-section">
+                <SectionTitle title="提交岗位 JD" description="文本和文件二选一，后台将异步抽取职责、门槛和技能证据。" />
+                <Input.TextArea value={jdText} onChange={(event) => setJdText(event.target.value)} rows={10} maxLength={30000} placeholder="粘贴岗位职责、任职要求和技能要求" disabled={jdFile.length > 0} />
+                <Dragger accept=".pdf,.docx,.txt" maxCount={1} fileList={jdFile} beforeUpload={() => false} onChange={({ fileList }) => { setJdFile(fileList.slice(-1)); if (fileList.length) setJdText('') }}><p className="ant-upload-drag-icon"><CloudUploadOutlined /></p><p className="ant-upload-text">或上传 PDF / DOCX / TXT JD</p></Dragger>
+                {task && <TaskProgress run={task} />}<Button type="primary" size="large" icon={<FileSearchOutlined />} loading={working} disabled={!jdText.trim() && !jdFile.length} onClick={() => void submitJd()}>解析 JD</Button>
+              </div> },
+              { key: 'requirements', label: `2. 要求确认 (${requirements.length})`, disabled: !project.jd_draft_payload.job_title, children: <div className="workflow-section">
+                <div className="section-title"><div><h2>校准岗位要求</h2><p>确认后生成不可变 revision，后续匹配始终引用该快照。</p></div><Tag color={hasConfirmedRequirements ? 'green' : 'gold'}>{hasConfirmedRequirements ? `已确认 v${project.requirements_revision}` : '待确认'}</Tag></div>
+                <div className="form-grid">
+                  <label><span>岗位名称</span><Input value={jobTitle} maxLength={200} onChange={(event) => setJobTitle(event.target.value)} /></label>
+                  <label><span>最低学历</span><Select allowClear value={education} options={EDUCATION_OPTIONS} onChange={setEducation} /></label>
+                  <label><span>建议经验（月）</span><InputNumber min={0} max={600} value={experienceMonths} onChange={setExperienceMonths} /></label>
+                  <label className="form-grid__wide"><span>岗位摘要</span><Input.TextArea value={summary} maxLength={1000} autoSize={{ minRows: 2, maxRows: 5 }} onChange={(event) => setSummary(event.target.value)} /></label>
+                  <label className="form-grid__wide"><span>核心职责（每行一条）</span><Input.TextArea value={responsibilities.join('\n')} maxLength={5000} autoSize={{ minRows: 3, maxRows: 8 }} onChange={(event) => setResponsibilities(event.target.value.split('\n'))} /></label>
                 </div>
-              </div>
-              {i < 3 && (
-                <div
-                  className="console-stepper__line"
-                  style={{ background: i < step ? 'linear-gradient(90deg,#dad0c8,#e4b592)' : 'var(--border)' }}
-                />
-              )}
-            </div>
-          ))}
-        </div>
-
-        {/* Step 0: Create project */}
-        {step === 0 && (
-          <div className="hr-project-grid animate-fade-up">
-            <div className="archive-panel hr-project-panel glass rounded-2xl p-8 max-w-2xl mx-auto">
-              <FrameCorners />
-              <h2 className="font-outfit font-bold text-xl text-[var(--text)] mb-6">创建招聘项目</h2>
-
-              <div className="space-y-5">
-                <div>
-                  <label className="block text-sm font-medium text-[var(--text)] mb-2">项目名称 / 岗位名称</label>
-                  <input
-                    type="text"
-                    value={jobTitle}
-                    onChange={(e) => setJobTitle(e.target.value)}
-                    placeholder="例如：NLP 算法工程师（2024春招）"
-                    className="w-full bg-[rgba(0,0,0,0.44)] border border-[var(--border)] px-4 py-3 text-[var(--text)] font-inter text-sm outline-none focus:border-[#e4b592] transition-colors"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-[var(--text)] mb-2">岗位描述（JD）</label>
-                  <textarea
-                    value={jobDescription}
-                    onChange={(e) => setJobDescription(e.target.value)}
-                    placeholder="粘贴完整的岗位描述，AI 将自动提取技能要求..."
-                    rows={8}
-                    className="w-full bg-[rgba(0,0,0,0.44)] border border-[var(--border)] px-4 py-3 text-[var(--text)] font-inter text-sm outline-none focus:border-[#e4b592] transition-colors resize-none"
-                  />
-                  <div className="text-xs text-[var(--text-dim)] mt-2">
-                    可以点击「上传 JD 文件」直接上传 PDF/Word
-                  </div>
-                </div>
-
-                <div className="flex gap-3 pt-4">
-                  <button
-                    className="btn btn-md btn-primary flex-1"
-                    onClick={() => setStep(1)}
-                    disabled={!jobTitle || !jobDescription}
-                  >
-                    解析 JD 并继续 <ArrowRightOutlined />
-                  </button>
-                  <button className="btn btn-md btn-ghost">
-                    <FolderOpenOutlined />
-                    上传 JD 文件
-                  </button>
-                </div>
-              </div>
-            </div>
-            <aside className="hr-project-rail archive-panel glass">
-              <FrameCorners />
-              <div className="hr-project-rail__eyebrow">Hiring field / intake</div>
-              <h2>招聘任务状态</h2>
-              <div className="hr-project-rail__signal">
-                <span className="hr-project-rail__signal-dot" />
-                <div>
-                  <strong>等待 JD</strong>
-                  <span>项目尚未进入解析阶段</span>
-                </div>
-              </div>
-              <div className="hr-project-rail__section">
-                <span>解析后会生成</span>
-                <ul>
-                  <li>岗位技能基线</li>
-                  <li>候选人批次</li>
-                  <li>匹配证据</li>
-                </ul>
-              </div>
-              <div className="hr-project-rail__footer">
-                <span>UPLOAD WINDOW</span>
-                <strong>01 - 50 RESUMES</strong>
-              </div>
-            </aside>
-          </div>
-        )}
-
-        {/* Step 1: Batch upload */}
-        {step === 1 && (
-          <div className="animate-fade-up">
-            <div className="archive-panel glass rounded-2xl p-8">
-              <FrameCorners />
-              <div className="flex justify-between items-center mb-6">
-                <div>
-                  <h2 className="font-outfit font-bold text-xl text-[var(--text)]">批量上传候选人简历</h2>
-                  <p className="text-sm text-[var(--text-dim)] mt-1">支持同时上传 1-50 份简历</p>
-                </div>
-                <div className="text-right">
-                  <div className="font-jetbrains text-2xl font-bold text-space-cyan">{files.length}</div>
-                  <div className="text-xs text-[var(--text-dim)]">已选择</div>
-                </div>
-              </div>
-
-              {/* Upload area */}
-              {!uploading && (
-                <div
-                    className={`console-dropzone archive-dropzone border-2 border-dashed p-10 text-center mb-6 transition-all cursor-pointer ${
-                    drag ? 'border-[#e4b592] bg-[rgba(228,181,146,0.05)]' : 'border-[var(--border)]'
-                  }`}
-                  onDragOver={(e) => {
-                    e.preventDefault()
-                    setDrag(true)
-                  }}
-                  onDragLeave={() => setDrag(false)}
-                  onDrop={handleDrop}
-                  onClick={() => fileRef.current?.click()}
-                >
-                  <FrameCorners />
-                  <div className="dropzone-icon">
-                    <CloudUploadOutlined />
-                  </div>
-                  <div className="font-outfit font-bold text-lg text-[var(--text)] mb-2">
-                    拖拽多个文件到这里
-                  </div>
-                  <div className="text-sm text-[var(--text-dim)]">或点击选择文件（支持多选）</div>
-                  <div className="text-xs text-[#a49b92] mt-3">支持 PDF / Word · 单个文件最大 20 MB</div>
-                </div>
-              )}
-
-              <input
-                ref={fileRef}
-                type="file"
-                multiple
-                className="hidden"
-                accept=".pdf,.docx"
-                onChange={(e) => handleFileSelect(e.target.files)}
-              />
-
-              {/* File list or upload progress */}
-              {uploading ? (
-                <UploadProgress files={files} progress={uploadProgress} />
-              ) : files.length > 0 ? (
-                <div className="space-y-2 mb-6">
-                  {files.map((file, i) => (
-                    <div key={i} className="archive-row glass rounded-lg p-3 flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <span className="file-state-icon">
-                          <FileTextOutlined />
-                        </span>
-                        <div>
-                          <div className="text-sm text-[var(--text)]">{file.name}</div>
-                          <div className="text-xs text-[var(--text-dim)]">
-                            {(file.size / 1024 / 1024).toFixed(2)} MB
-                          </div>
-                        </div>
-                      </div>
-                      <button
-                        className="text-[var(--text-dim)] hover:text-[#ee1212] transition-colors"
-                        onClick={() => setFiles((prev) => prev.filter((_, idx) => idx !== i))}
-                      >
-                        <DeleteOutlined />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-
-              {/* Actions */}
-              <div className="flex gap-3">
-                <button className="btn btn-sm btn-ghost" onClick={() => setStep(0)}>
-                  <ArrowLeftOutlined /> 返回
-                </button>
-                <button
-                  className="btn btn-md btn-primary flex-1"
-                  onClick={startBatchUpload}
-                  disabled={files.length === 0 || uploading}
-                >
-                  {uploading ? '解析中...' : <>开始解析 {files.length} 份简历 <ArrowRightOutlined /></>}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Step 2: Candidate ranking */}
-        {step === 2 && (
-          <div className="animate-fade-up">
-            <div className="archive-panel glass rounded-2xl p-6 mb-6">
-              <FrameCorners />
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="font-outfit font-bold text-xl text-[var(--text)]">候选人排名</h2>
-                <div className="flex gap-2">
-                  <select
-                    value={sortBy}
-                    onChange={(e) => setSortBy(e.target.value as any)}
-                    className="bg-[rgba(0,0,0,0.44)] border border-[var(--border)] px-3 py-1.5 text-sm text-[var(--text)] outline-none cursor-pointer"
-                  >
-                    <option value="match">按匹配度排序</option>
-                    <option value="education">按学历排序</option>
-                    <option value="experience">按工作年限排序</option>
-                  </select>
-                  <button
-                    className="btn btn-sm btn-primary"
-                    disabled={selectedCandidates.length < 2}
-                    onClick={() => setStep(3)}
-                  >
-                    对比选中 ({selectedCandidates.length})
-                  </button>
-                </div>
-              </div>
-
-              {/* Candidate table */}
-              <div className="space-y-3">
-                {sortedCandidates.map((candidate, index) => (
-                  <div
-                    key={candidate.id}
-                    className={`candidate-archive-row archive-row glass rounded-xl p-4 transition-all cursor-pointer ${
-                      selectedCandidates.includes(candidate.id) ? 'ring-2 ring-space-cyan' : ''
-                    }`}
-                    onClick={() => toggleCandidate(candidate.id)}
-                  >
-                    <div className="hr-candidate-content flex items-center gap-4">
-                      {/* Checkbox */}
-                      <input
-                        type="checkbox"
-                        checked={selectedCandidates.includes(candidate.id)}
-                        onChange={() => {}}
-                        className="w-4 h-4"
-                        style={{ accentColor: '#ee1212' }}
-                      />
-
-                      {/* Rank */}
-                      <div className="text-center min-w-[40px]">
-                        <div className="font-jetbrains font-bold text-2xl text-space-cyan">#{index + 1}</div>
-                      </div>
-
-                      {/* Match ring */}
-                      <Ring v={candidate.match} size={56} color={getBadgeColor(candidate.badge)} />
-
-                      {/* Info */}
-                      <div className="hr-candidate-info flex-1">
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="font-outfit font-bold text-base text-[var(--text)]">
-                            {candidate.name}
-                          </span>
-                          <span
-                            className="font-jetbrains text-[9px] px-2 py-0.5"
-                            style={{
-                              background: `${getBadgeColor(candidate.badge)}18`,
-                              border: `1px solid ${getBadgeColor(candidate.badge)}40`,
-                              color: getBadgeColor(candidate.badge),
-                            }}
-                          >
-                            {candidate.badge}级
-                          </span>
-                          <span className="text-xs text-[var(--text-dim)]">
-                            {candidate.education} · {candidate.experience}
-                          </span>
-                        </div>
-
-                        {/* Skills */}
-                        <div className="flex flex-wrap gap-1.5 mb-2">
-                          {candidate.skills.slice(0, 5).map((skill) => (
-                            <span key={skill} className="tag tag-green text-[10px]">
-                              {skill}
-                            </span>
-                          ))}
-                          {candidate.skills.length > 5 && (
-                            <span className="text-xs text-[var(--text-dim)]">+{candidate.skills.length - 5}</span>
-                          )}
-                        </div>
-
-                        {/* Missing skills */}
-                        {candidate.missingSkills.length > 0 && (
-                          <div className="text-xs text-[#ee1212]">
-                            缺失: {candidate.missingSkills.slice(0, 3).join(', ')}
-                            {candidate.missingSkills.length > 3 && ` +${candidate.missingSkills.length - 3}`}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Actions */}
-                      <div className="hr-candidate-actions flex gap-2">
-                        <button className="btn btn-sm btn-ghost">查看详情</button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <button className="btn btn-sm btn-ghost" onClick={() => setStep(1)}>
-              <ArrowLeftOutlined /> 返回
-            </button>
-          </div>
-        )}
-
-        {/* Step 3: Compare candidates */}
-        {step === 3 && selectedCandidates.length >= 2 && (
-          <div className="animate-fade-up">
-            <div className="archive-panel glass rounded-2xl p-6 mb-6">
-              <FrameCorners />
-              <h2 className="font-outfit font-bold text-xl text-[var(--text)] mb-6">候选人对比分析</h2>
-
-              <div className="hr-compare-grid grid grid-cols-3 gap-4">
-                {selectedCandidates.slice(0, 3).map((id) => {
-                  const candidate = candidates.find((c) => c.id === id)
-                  if (!candidate) return null
-
-                  return (
-                    <div key={id} className="archive-row glass rounded-xl p-5">
-                      <div className="text-center mb-4">
-                        <Ring v={candidate.match} size={72} color={getBadgeColor(candidate.badge)} />
-                        <div className="font-outfit font-bold text-lg text-[var(--text)] mt-3">
-                          {candidate.name}
-                        </div>
-                        <div className="text-xs text-[var(--text-dim)] mt-1">
-                          {candidate.education} · {candidate.experience}
-                        </div>
-                      </div>
-
-                      <div className="space-y-3">
-                        <div>
-                          <div className="text-xs font-medium text-[var(--text-dim)] mb-1.5">
-                            <CheckCircleOutlined /> 已具备技能
-                          </div>
-                          <div className="flex flex-wrap gap-1">
-                            {candidate.skills.map((s) => (
-                              <span key={s} className="tag tag-green text-[10px]">
-                                {s}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div>
-                          <div className="text-xs font-medium text-[var(--text-dim)] mb-1.5">
-                            <CloseCircleOutlined /> 缺失技能
-                          </div>
-                          <div className="flex flex-wrap gap-1">
-                            {candidate.missingSkills.map((s) => (
-                              <span key={s} className="tag tag-red text-[10px]">
-                                {s}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-
-            <div className="hr-final-actions flex gap-3">
-              <button className="btn btn-sm btn-ghost" onClick={() => setStep(2)}>
-                <ArrowLeftOutlined /> 返回列表
-              </button>
-              <button className="btn btn-sm btn-primary">
-                <DownloadOutlined /> 导出对比报告
-              </button>
-            </div>
-          </div>
-        )}
+                <div className="requirement-list"><div className="requirement-list__head"><strong>已映射能力</strong><span>必备 {requirementStats.required} · 加分 {requirementStats.bonus}</span></div>{requirements.map((item, index) => <div className="requirement-row" key={item.capability_id || `${item.raw_name}-${index}`}><div><strong>{item.canonical_name || item.raw_name || item.name}</strong><small>{item.evidence_quote || '人工校准项'}</small></div><Select value={item.requirement_type} options={[{ value: 'required', label: '必备' }, { value: 'bonus', label: '加分' }]} onChange={(value) => setRequirements((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, requirement_type: value } : row))} /><div className="importance-control"><span>重要度 {Math.round((item.importance || 0) * 100)}%</span><Slider min={1} max={100} value={Math.round((item.importance || 0.5) * 100)} onChange={(value) => setRequirements((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, importance: value / 100 } : row))} /></div></div>)}</div>
+                {unmapped.length > 0 && <Alert type="warning" showIcon message={`${unmapped.length} 项技能未命中标准 Capability`} description={unmapped.map((item) => item.raw_name || item.name).join('、')} />}
+                <Button type="primary" size="large" icon={<CheckCircleOutlined />} loading={working} onClick={() => void saveAndConfirm()}>保存并确认要求</Button>
+              </div> },
+              { key: 'candidates', label: `3. 候选人 (${candidates.length})`, disabled: !hasConfirmedRequirements, children: <div className="workflow-section">
+                <SectionTitle title="候选人简历" description="每批 1–20 份 PDF/DOCX，单份失败不会回滚已成功结果。" />
+                <Dragger multiple accept=".pdf,.docx" fileList={candidateFiles} beforeUpload={() => false} onChange={({ fileList }) => setCandidateFiles(fileList.slice(0, 20))}><p className="ant-upload-drag-icon"><CloudUploadOutlined /></p><p className="ant-upload-text">拖入候选人简历</p><p className="ant-upload-hint">已选 {candidateFiles.length} / 20 份</p></Dragger>
+                {task && <TaskProgress run={task} />}<div className="button-row"><Button type="primary" loading={working} disabled={!candidateFiles.length} onClick={() => void uploadCandidates()}>上传并解析</Button><Button disabled={!readyCount || working} onClick={() => void runMatch()}>生成匹配快照</Button></div>
+                <div className="candidate-list">{candidates.map((candidate) => <div key={candidate.id}><UserOutlined /><strong>{candidate.display_name}</strong><Tag color={candidate.parse_status === 'ready' ? 'green' : candidate.parse_status === 'failed' ? 'red' : 'gold'}>{candidate.parse_status}</Tag><span>{formatDate(candidate.updated_at)}</span></div>)}</div>
+              </div> },
+              { key: 'results', label: `4. 匹配结果 (${results.length})`, disabled: !matchRuns.length, children: <div className="workflow-section">
+                <div className="section-title"><div><h2>候选人排名</h2><p>切换历史快照不会用当前 JD 或候选人数据覆盖旧结果。</p></div><Select className="run-select" value={selectedRunId} onChange={(value) => void switchRun(value)} options={matchRuns.map((run) => ({ value: run.id, label: `${formatDate(run.created_at)} · ${run.result_count} 人` }))} /></div>
+                <Table rowKey="candidate_id" pagination={false} dataSource={results} onRow={(row) => ({ onClick: () => void showResult(row) })} columns={[
+                  { title: '排名', dataIndex: 'rank', width: 72, render: (value: number) => `#${value}` },
+                  { title: '候选人', render: (_value, row) => row.candidate.display_name || row.candidate_id },
+                  { title: '匹配等级', dataIndex: 'match_level', render: (value: string) => <Tag color={value === 'high' ? 'green' : value === 'medium' ? 'gold' : 'red'}>{value}</Tag> },
+                  { title: '总分', dataIndex: 'total_score', render: (value: number) => <strong>{value.toFixed(1)}</strong> },
+                  { title: '缺口', render: (_value, row) => row.gap_summary.missing_required_count ?? 0 },
+                ]} />
+                {selectedResult && <ResultDetail result={selectedResult} />}
+              </div> },
+            ]} />
+          </>}
+        </section>
       </div>
-    </div>
+    </div></main>
   )
+}
+
+function SectionTitle({ title, description }: { title: string; description: string }) {
+  return <div className="section-title"><div><h2>{title}</h2><p>{description}</p></div></div>
+}
+
+function TaskProgress({ run }: { run: ProcessingRunResponse }) {
+  return <div className="task-progress"><span style={{ width: `${Math.max(0, Math.min(100, run.progress_percent))}%` }} /><strong>{run.current_stage || run.status}</strong><em>{Math.round(run.progress_percent)}%</em></div>
+}
+
+function ResultDetail({ result }: { result: RecruitmentMatchResult }) {
+  const matched = result.matched_capabilities ?? []
+  const missing = result.missing_capabilities ?? []
+  return <section className="result-detail"><FrameCorners /><div className="section-title"><div><h3>{result.candidate.display_name || '候选人'} · 匹配明细</h3><p>得分来自该次不可变的岗位要求和候选人画像快照。</p></div><strong className="result-detail__score">{result.total_score.toFixed(1)}</strong></div><div className="result-detail__grid"><div><h4>已命中能力</h4>{matched.length ? matched.map((item) => <span key={item.capability_id}>{item.canonical_name}</span>) : <small>无</small>}</div><div><h4>缺失能力</h4>{missing.length ? missing.map((item) => <span key={item.capability_id}>{item.canonical_name}</span>) : <small>无必备能力缺口</small>}</div></div></section>
 }

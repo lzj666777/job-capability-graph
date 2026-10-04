@@ -3,15 +3,18 @@ import asyncio
 import getpass
 import sys
 from datetime import UTC, datetime
+from pathlib import Path
 
-from sqlalchemy import func, select
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.auth.models import User
-from app.auth.service import normalize_username
-from app.core.security import hash_password
-from app.infrastructure.database import SessionFactory
+from sqlalchemy import func, select  # noqa: E402
+from sqlalchemy.exc import IntegrityError  # noqa: E402
+from sqlalchemy.ext.asyncio import AsyncSession  # noqa: E402
+
+from app.auth.models import User  # noqa: E402
+from app.auth.service import normalize_username  # noqa: E402
+from app.core.security import hash_password  # noqa: E402
+from app.infrastructure.database import SessionFactory  # noqa: E402
 
 
 class CLIUserError(Exception):

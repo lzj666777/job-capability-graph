@@ -302,9 +302,7 @@ async def _validate_rows(
                     error = ("ALIAS_CONFLICT", "alias 已被其他目录项使用")
                     break
         if error is not None:
-            result.append(
-                _error_row(row_number, payload, error[0], error[1])
-            )
+            result.append(_error_row(row_number, payload, error[0], error[1]))
             continue
         seen_entities.add(key)
         for alias in aliases_list:
@@ -404,6 +402,7 @@ async def _apply_rows(
                 canonical_name=row["canonical_name"],
                 description=row["payload"].get("description"),
                 skill_type=str(row["payload"].get("skill_type") or "other"),
+                framework_payload=row["payload"].get("framework_payload") or {},
                 status=status,
                 source_type=row["source_type"],
             )
@@ -618,6 +617,7 @@ def _capability_data(value: Capability, domain: Domain) -> dict[str, Any]:
         "canonical_name": value.canonical_name,
         "description": value.description,
         "skill_type": value.skill_type,
+        "framework_payload": value.framework_payload,
         "status": value.status,
         "source_type": value.source_type,
     }

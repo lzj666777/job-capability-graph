@@ -69,9 +69,7 @@ async def test_all_authenticated_roles_read_graph_without_csrf(
                 "max_capabilities": 80,
             },
         )
-        local_response = await client.get(
-            f"/api/v1/graph/job-roles/{job_role_id}"
-        )
+        local_response = await client.get(f"/api/v1/graph/job-roles/{job_role_id}")
         assert global_response.status_code == 200
         assert local_response.status_code == 200
         assert global_response.json()["data"]["graph_version"]["version_no"] == 3
@@ -81,6 +79,54 @@ async def test_all_authenticated_roles_read_graph_without_csrf(
     assert all(call["max_job_roles"] == 12 for call in global_calls)
     assert all(call["max_capabilities"] == 80 for call in global_calls)
     assert local_calls == [(job_role_id, {})] * 3
+
+
+async def test_all_authenticated_roles_read_safe_emerging_jobs(
+    client,
+    discovery_api_users,
+    discovery_api_context,
+) -> None:
+    expected_keys = {
+        "id",
+        "suggested_name",
+        "support_job_count",
+        "source_count",
+        "company_count",
+        "overall_candidate_score",
+        "required_skill_names",
+        "bonus_skill_names",
+        "industries",
+        "status",
+        "source",
+    }
+
+    for role in ("applicant", "hr", "admin"):
+        await _login(client, role)
+        response = await client.get("/api/v1/graph/emerging-jobs")
+
+        assert response.status_code == 200
+        candidate = response.json()["data"][0]
+        assert set(candidate) == expected_keys
+        assert candidate["id"] == str(discovery_api_context.candidate.id)
+        assert candidate["required_skill_names"] == ["Python", "自动化测试"]
+        assert "definition_payload" not in candidate
+        assert "secret" not in response.text
+
+
+async def test_rejected_emerging_jobs_are_hidden_from_graph(
+    client,
+    discovery_api_users,
+    discovery_api_context,
+    db_session,
+) -> None:
+    discovery_api_context.candidate.status = "rejected"
+    await db_session.flush()
+    await _login(client, "applicant")
+
+    response = await client.get("/api/v1/graph/emerging-jobs")
+
+    assert response.status_code == 200
+    assert response.json()["data"] == []
 
 
 async def test_graph_read_requires_authentication(client, monkeypatch) -> None:
@@ -97,14 +143,22 @@ async def test_graph_read_requires_authentication(client, monkeypatch) -> None:
         must_not_run,
         raising=False,
     )
+    monkeypatch.setattr(
+        "app.graph.router.list_emerging_jobs_for_graph",
+        must_not_run,
+        raising=False,
+    )
 
     global_response = await client.get("/api/v1/graph")
     local_response = await client.get(f"/api/v1/graph/job-roles/{uuid4()}")
+    emerging_response = await client.get("/api/v1/graph/emerging-jobs")
 
     assert global_response.status_code == 401
     assert local_response.status_code == 401
+    assert emerging_response.status_code == 401
     assert global_response.json()["error"]["code"] == "AUTH_REQUIRED"
     assert local_response.json()["error"]["code"] == "AUTH_REQUIRED"
+    assert emerging_response.json()["error"]["code"] == "AUTH_REQUIRED"
 
 
 async def test_global_graph_query_parameter_bounds(

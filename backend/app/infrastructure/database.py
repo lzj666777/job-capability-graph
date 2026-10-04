@@ -1,4 +1,5 @@
-from collections.abc import AsyncIterator
+import asyncio
+from collections.abc import AsyncIterator, Awaitable
 from datetime import datetime
 
 from sqlalchemy import DateTime, MetaData, func
@@ -36,6 +37,19 @@ class CreatedAtMixin:
 settings = get_settings()
 engine = create_async_engine(settings.database_url, pool_pre_ping=True)
 SessionFactory = async_sessionmaker(engine, expire_on_commit=False)
+
+
+async def _run_worker_awaitable[T](awaitable: Awaitable[T]) -> T:
+    try:
+        return await awaitable
+    finally:
+        # Celery creates a fresh event loop for each synchronous task. Pooled
+        # asyncpg connections must be closed before that loop is destroyed.
+        await engine.dispose()
+
+
+def run_worker[T](awaitable: Awaitable[T]) -> T:
+    return asyncio.run(_run_worker_awaitable(awaitable))
 
 
 async def get_db() -> AsyncIterator[AsyncSession]:

@@ -196,6 +196,8 @@ async def load_scoring_inputs(
                 domain_id=domain.id,
                 domain_code=domain.code,
                 domain_name=domain.name,
+                dual_track=capability.framework_payload.get("dual_track"),
+                capability_group=capability.framework_payload.get("group"),
             )
         )
 

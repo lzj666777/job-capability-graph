@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -13,7 +12,7 @@ from app.core.config import get_settings
 from app.core.errors import APIError
 from app.discovery.mining import normalize_skill_label
 from app.files.models import StoredFile
-from app.infrastructure.database import SessionFactory
+from app.infrastructure.database import SessionFactory, run_worker
 from app.infrastructure.file_storage import FileStorage
 from app.llm.responses import create_responses_http_client
 from app.processing.models import ProcessingError, ProcessingRun
@@ -362,7 +361,7 @@ async def _run_with_session(run_id: UUID) -> None:
 
 @celery_app.task(name="app.parse_recruitment_jd")
 def parse_recruitment_jd_task(run_id: str) -> None:
-    asyncio.run(_run_with_session(UUID(run_id)))
+    run_worker(_run_with_session(UUID(run_id)))
 
 
 async def run_parse_recruitment_candidates(
@@ -705,4 +704,4 @@ async def _run_candidates_with_session(run_id: UUID) -> None:
 
 @celery_app.task(name="app.parse_recruitment_candidates")
 def parse_recruitment_candidates_task(run_id: str) -> None:
-    asyncio.run(_run_candidates_with_session(UUID(run_id)))
+    run_worker(_run_candidates_with_session(UUID(run_id)))

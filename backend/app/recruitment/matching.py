@@ -40,6 +40,8 @@ def requirement_inputs(snapshot: dict) -> tuple[CapabilityRequirementInput, ...]
             domain_id=UUID(item["domain"]["id"]),
             domain_code=item["domain"]["code"],
             domain_name=item["domain"]["name"],
+            dual_track=item.get("framework_payload", {}).get("dual_track"),
+            capability_group=item.get("framework_payload", {}).get("group"),
         )
         for item in snapshot.get("requirements", [])
     )

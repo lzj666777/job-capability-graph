@@ -33,6 +33,9 @@ docker compose up -d postgres redis neo4j
 docker compose run --rm migrate
 docker compose run --rm api uv run python scripts/create_user.py \
   --username admin --display-name 系统管理员 --role admin
+docker compose run --rm api uv run python scripts/bootstrap_capability_framework.py
+docker compose run --rm api uv run python scripts/import_emerging_job_definitions.py \
+  data/emerging_job_definitions.json
 docker compose up -d api worker scheduler
 curl http://127.0.0.1:8000/health/ready
 ```
@@ -48,6 +51,8 @@ npm run dev
 前端默认运行在 `http://localhost:5174`，开发代理会把 `/api` 转发到后端 `/api/v1`。
 
 创建首个管理员时，命令行会通过 `getpass` 要求输入并确认密码；密码不会回显。首个账号必须是 `admin`，后续 applicant、hr、admin 账号由管理员 API 创建和维护。
+
+`backend/data/emerging_job_definitions.json` 是由项目提供的岗位定义工作簿整理出的脱敏种子数据，包含 192 个聚合岗位定义，不包含原始 JD 正文或个人信息。导入命令以源文件哈希保持幂等，重复执行不会生成重复岗位。
 
 启动成功后：
 

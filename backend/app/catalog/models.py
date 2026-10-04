@@ -52,6 +52,10 @@ class Capability(CreatedAtMixin, Base):
             name="status",
         ),
         CheckConstraint("length(btrim(canonical_name)) > 0", name="nonempty_name"),
+        CheckConstraint(
+            "jsonb_typeof(framework_payload) = 'object'",
+            name="framework_payload_object",
+        ),
         Index("ix_capabilities_domain_status", "domain_id", "status"),
     )
 
@@ -60,6 +64,12 @@ class Capability(CreatedAtMixin, Base):
     canonical_name: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
     skill_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    framework_payload: Mapped[dict] = mapped_column(
+        JSONB,
+        default=dict,
+        server_default=text("'{}'::jsonb"),
+        nullable=False,
+    )
     status: Mapped[str] = mapped_column(
         String(20), default="candidate", server_default="candidate", nullable=False
     )

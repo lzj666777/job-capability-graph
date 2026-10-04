@@ -30,16 +30,21 @@ def _capability(
     importance: str,
     *,
     capability_id: UUID | None = None,
+    skill_type: str = "tool",
+    dual_track: str | None = None,
+    capability_group: str | None = None,
 ) -> CapabilityRequirementInput:
     return CapabilityRequirementInput(
         capability_id=capability_id or uuid4(),
         canonical_name=name,
-        skill_type="tool",
+        skill_type=skill_type,
         requirement_type=requirement_type,
         importance=Decimal(importance),
         domain_id=UUID("10000000-0000-4000-8000-000000000001"),
         domain_code="ai",
         domain_name="人工智能",
+        dual_track=dual_track,
+        capability_group=capability_group,
     )
 
 
@@ -100,13 +105,11 @@ def _profile(
 
 
 def test_weight_version_and_snapshot_are_fixed() -> None:
-    assert WEIGHT_VERSION == "match_weights_v1"
+    assert WEIGHT_VERSION == "translation_weights_v2"
     assert WEIGHTS == {
-        "required_skill_coverage": Decimal("0.55"),
-        "bonus_skill_coverage": Decimal("0.10"),
-        "skill_evidence_quality": Decimal("0.15"),
-        "experience": Decimal("0.15"),
-        "education": Decimal("0.05"),
+        "comprehensive_quality": Decimal("0.45"),
+        "knowledge_foundation": Decimal("0.40"),
+        "education": Decimal("0.15"),
     }
     assert EVIDENCE_FACTORS == {
         "mention": Decimal("0.40"),
@@ -121,8 +124,14 @@ def test_weight_version_and_snapshot_are_fixed() -> None:
         "doctor": 5,
     }
     assert weight_snapshot() == {
-        "algorithm": "exact_capability_match_v1",
+        "algorithm": "capability_translation_v2",
         "weights": {
+            "comprehensive_quality": 0.45,
+            "knowledge_foundation": 0.4,
+            "education": 0.15,
+        },
+        "hard_skill_gap_separate": True,
+        "legacy_fallback_weights": {
             "required_skill_coverage": 0.55,
             "bonus_skill_coverage": 0.1,
             "skill_evidence_quality": 0.15,
@@ -134,6 +143,153 @@ def test_weight_version_and_snapshot_are_fixed() -> None:
         "match_levels": {"high_minimum": 75.0, "medium_minimum": 50.0},
         "rounding": "ROUND_HALF_UP_2DP",
     }
+
+
+def test_translation_weights_use_45_40_15_and_report_hard_gap_separately() -> None:
+    interaction = _capability(
+        "交互内容制作",
+        "required",
+        "1.0",
+        skill_type="hard_skill",
+        dual_track="gap",
+        capability_group="工具操作",
+    )
+    teamwork = _capability(
+        "团队协作",
+        "required",
+        "1.0",
+        skill_type="general_competency",
+        dual_track="translate",
+        capability_group="组织协调",
+    )
+    quality = _capability(
+        "质量意识",
+        "bonus",
+        "0.5",
+        skill_type="work_style",
+        dual_track="translate",
+        capability_group="工作风格",
+    )
+    writing = _capability(
+        "写作能力",
+        "required",
+        "1.0",
+        skill_type="general_competency",
+        dual_track="translate",
+        capability_group="表达与写作",
+    )
+    business = _capability(
+        "商业思维",
+        "bonus",
+        "0.5",
+        skill_type="knowledge",
+        dual_track="translate",
+        capability_group="知识基础",
+    )
+    role = _role(
+        (interaction, teamwork, quality, writing, business),
+        recommended_experience_months=120,
+    )
+    without_hard = _profile(
+        [_skill(teamwork, "work"), _skill(writing, "project")],
+        education="bachelor",
+        experience_months=0,
+    )
+    with_hard = _profile(
+        [
+            _skill(interaction, "work"),
+            _skill(teamwork, "work"),
+            _skill(writing, "project"),
+        ],
+        education="bachelor",
+        experience_months=120,
+    )
+
+    missing_hard = score_job_role(without_hard, role)
+    matched_hard = score_job_role(with_hard, role)
+
+    assert missing_hard.total_score == Decimal("63.67")
+    assert matched_hard.total_score == missing_hard.total_score
+    assert missing_hard.dimension_scores["comprehensive_quality"]["score"] == 66.67
+    assert missing_hard.dimension_scores["knowledge_foundation"]["score"] == 46.67
+    assert missing_hard.dimension_scores["hard_skill_gap"]["score"] == 0.0
+    assert matched_hard.dimension_scores["hard_skill_gap"]["score"] == 100.0
+    assert missing_hard.dimension_scores["experience"]["score"] == 0.0
+
+
+def test_translation_scoring_treats_missing_dimension_as_not_required() -> None:
+    prompt_engineering = _capability(
+        "提示工程",
+        "required",
+        "1.0",
+        skill_type="hard_skill",
+        dual_track="gap",
+        capability_group="工具操作",
+    )
+    quality = _capability(
+        "质量意识",
+        "required",
+        "1.0",
+        skill_type="work_style",
+        dual_track="translate",
+        capability_group="工作风格",
+    )
+    role = _role(
+        (prompt_engineering, quality),
+        minimum_education_level="bachelor",
+        recommended_experience_months=None,
+    )
+    profile = _profile(
+        [
+            _skill(prompt_engineering, "project"),
+            _skill(quality, "project"),
+        ],
+        education="bachelor",
+        experience_months=None,
+    )
+
+    result = score_job_role(profile, role)
+
+    assert result.total_score == Decimal("86.50")
+    assert result.dimension_scores["comprehensive_quality"]["score"] == 70.0
+    assert result.dimension_scores["knowledge_foundation"] == {
+        "score": 100.0,
+        "status": "not_required",
+        "matched_count": 0,
+        "total_count": 0,
+        "evidence_weighted_importance": 0.0,
+        "total_importance": 0.0,
+    }
+    assert result.dimension_scores["hard_skill_gap"]["score"] == 100.0
+
+
+def test_translation_scoring_falls_back_when_only_hard_gap_is_defined() -> None:
+    prompt_engineering = _capability(
+        "提示工程",
+        "required",
+        "1.0",
+        skill_type="hard_skill",
+        dual_track="gap",
+        capability_group="工具操作",
+    )
+    role = _role(
+        (prompt_engineering,),
+        minimum_education_level=None,
+        recommended_experience_months=None,
+    )
+
+    result = score_job_role(
+        _profile(
+            [_skill(prompt_engineering, "project")],
+            education=None,
+            experience_months=None,
+        ),
+        role,
+    )
+
+    assert result.total_score == Decimal("95.50")
+    assert "comprehensive_quality" not in result.dimension_scores
+    assert "knowledge_foundation" not in result.dimension_scores
 
 
 def test_complete_five_dimension_score_uses_unrounded_decimal_values() -> None:

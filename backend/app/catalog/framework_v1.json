@@ -1,0 +1,178 @@
+{
+  "schema_version": "capability_framework_v1",
+  "domain": {
+    "code": "capability-translator",
+    "name": "能力翻译器",
+    "description": "面向原专业学生的新质岗位能力翻译框架：硬技能补缺口，软技能做翻译。"
+  },
+  "translation_weights": {
+    "comprehensive_quality": 0.45,
+    "knowledge_foundation": 0.4,
+    "education": 0.15,
+    "hard_skill_gap_separate": true
+  },
+  "capabilities": [
+    {
+      "name": "数据清洗", "meta_dimension": "hard_skill", "dual_track": "gap", "group": "工具操作", "primary": "J2", "aliases": ["Python", "pandas", "SQL", "数据爬取", "爬虫", "数据采集", "数据标注", "数据分类", "多模态数据清洗", "数据库"],
+      "bars": ["知道数据清洗概念与常见脏数据", "能说明缺失、重复、异常值的处理思路", "能用工具独立完成去重、缺失填充、格式统一", "能按数据源设计清洗流程并自动化", "能制定清洗规范并带教复杂脏数据处理"]
+    },
+    {
+      "name": "统计推断", "meta_dimension": "hard_skill", "dual_track": "gap", "group": "工具操作", "primary": "J2", "aliases": ["SPSS", "统计分析", "数据分析", "回归分析", "方差分析"],
+      "bars": ["了解常用统计量与分布", "能解释假设检验、置信区间逻辑", "能独立选用统计方法并给出结论", "能对复杂业务数据建模并做显著性、稳健性检验", "能设计统计方案并指导避坑统计谬误"]
+    },
+    {
+      "name": "数据可视化", "meta_dimension": "hard_skill", "dual_track": "gap", "group": "工具操作", "primary": "J2", "aliases": ["可视化", "图表", "PPT", "看板", "报表绘制"],
+      "bars": ["认识常见图表类型", "能说明不同图表适用场景", "能独立产出规范可读图表", "能产出直观美观、叙事清晰的图表或看板", "能制定可视化规范并指导他人讲故事"]
+    },
+    {
+      "name": "文本挖掘", "meta_dimension": "hard_skill", "dual_track": "gap", "group": "工具操作", "primary": "J2", "secondary": "J4", "aliases": ["NLP", "RAG", "知识库", "意图识别", "OCR"],
+      "bars": ["知道分词、词频、主题等基本任务", "能解释文本预处理与特征表示", "能独立完成文本清洗、分词与统计", "能完成主题模型、情感分析或命名实体任务", "能设计文本挖掘方案并带教"]
+    },
+    {
+      "name": "提示工程", "meta_dimension": "hard_skill", "dual_track": "gap", "group": "工具操作", "primary": "J2", "secondary": "J1", "aliases": ["ChatGPT", "DeepSeek", "Prompt 工程", "提示词调优", "提示词优化", "LLM", "讯飞智能体", "AI agent", "Agent 编排", "智能体搭建"],
+      "bars": ["了解大模型与提示词基本概念", "能说明提示词结构与上下文作用", "能写出有效提示词完成任务", "能设计少样本、链式或结构化提示并迭代优化", "能沉淀提示词模板与最佳实践并带教"]
+    },
+    {
+      "name": "AI 内容生成", "meta_dimension": "hard_skill", "dual_track": "gap", "group": "工具操作", "primary": "J1", "aliases": ["ComfyUI", "topnow", "lovart", "工作流搭建", "扣子", "Dify", "数字人", "Lora 训练"],
+      "bars": ["了解文生文、文生图等生成工具", "能说明生成式 AI 适用场景与局限", "能独立用工具生成所需内容", "能组合多工具完成内容生产并控制质量", "能搭建内容生成流程并培训他人"]
+    },
+    {
+      "name": "图文编辑", "meta_dimension": "hard_skill", "dual_track": "gap", "group": "工具操作", "primary": "J1", "aliases": ["Midjourney", "Stable Diffusion", "SD", "即梦", "海螺", "可灵", "pika", "runway", "luma", "seedance", "文生图", "图生图", "图像生成", "Photoshop", "PS", "精修", "主图", "详情页", "海报", "封面图"],
+      "bars": ["认识常见图文编辑工具", "能说明排版、配色基本原则", "能独立完成基础图文排版", "能产出规范美观的图文成品", "能制定视觉规范并带教"]
+    },
+    {
+      "name": "短视频制作", "meta_dimension": "hard_skill", "dual_track": "gap", "group": "工具操作", "primary": "J1", "aliases": ["图生视频", "AI 视频生成", "即创", "即梦视频", "AI 漫剧", "AI 真人剧", "剪映", "剪映AI", "AI 剪辑", "达芬奇", "Premiere", "MG 动画", "特效包装", "调色"],
+      "bars": ["了解拍摄、剪辑基本流程", "能说明脚本、节奏、剪辑要点", "能独立完成一条短视频", "能产出有吸引力的短视频并运营", "能规划内容并培训他人"]
+    },
+    {
+      "name": "交互内容制作", "meta_dimension": "hard_skill", "dual_track": "gap", "group": "工具操作", "primary": "J1", "aliases": ["React", "Vue", "Vue.js", "uni-app", "Element Plus", "HTML5", "CSS3", "JavaScript", "TypeScript", "Sass", "Less", "Webpack", "Axios", "RESTful", "HTTP", "Node.js"],
+      "bars": ["了解交互式内容、H5或可视化概念", "能说明交互设计基本逻辑", "能独立完成简单交互内容", "能产出体验良好的交互作品", "能设计交互方案并带教"]
+    },
+    {
+      "name": "数学建模", "meta_dimension": "general_competency", "dual_track": "translate", "group": "创新研发", "primary": "J2", "aliases": ["数学分析", "高等代数", "概率论"],
+      "bars": ["了解数学建模一般步骤", "能解释回归、优化、微分方程等模型", "能把实际问题抽象为模型并求解", "能针对复杂问题选型、建模、实现并验证", "能带队建模并指导他人"]
+    },
+    {
+      "name": "创新策划", "meta_dimension": "general_competency", "dual_track": "translate", "group": "创新研发", "primary": "J4", "secondary": "J2", "aliases": ["内容策划", "数字策展", "创新应用"],
+      "bars": ["了解创新、策划基本概念", "能说明创意到方案的转化逻辑", "能独立产出完整策划方案", "能落地创新方案并迭代", "能搭建创新方法论并带教"]
+    },
+    {
+      "name": "跨界迁移", "meta_dimension": "general_competency", "dual_track": "translate", "group": "创新研发", "primary": "J4", "secondary": "J3", "aliases": ["知识迁移", "T 型知识整合", "跨学科迁移", "美术学", "工艺美术", "公共艺术", "数字媒体", "产品设计", "视觉设计"],
+      "bars": ["了解跨学科迁移概念", "能说明本学科方法可迁移到哪些场景", "能把本学科方法应用到新领域", "能快速在新领域复用方法论并产出", "能总结迁移路径并指导他人"]
+    },
+    {
+      "name": "跨部门沟通", "meta_dimension": "general_competency", "dual_track": "translate", "group": "组织协调", "primary": "J3", "aliases": ["跨部门协作", "项目沟通"],
+      "bars": ["了解跨部门协作基本规则", "能说明不同角色诉求与沟通方式", "能独立完成跨部门信息同步", "能推动跨部门协作达成共识", "能建立沟通机制并带教"]
+    },
+    {
+      "name": "团队协作", "meta_dimension": "general_competency", "dual_track": "translate", "group": "组织协调", "primary": "J3", "aliases": ["团队", "组长", "分工", "协作", "补位"],
+      "bars": ["了解团队分工基本规范", "能说明角色分工与协作流程", "能独立完成团队内分工", "能高效协作并主动补位", "能组织团队并协调分工"]
+    },
+    {
+      "name": "冲突解决", "meta_dimension": "general_competency", "dual_track": "translate", "group": "组织协调", "primary": "J3", "aliases": ["冲突化解", "分歧调解"],
+      "bars": ["了解冲突基本类型", "能说明冲突成因与化解思路", "能独立化解一般分歧", "能有效调解团队冲突", "能建立冲突化解机制并带教"]
+    },
+    {
+      "name": "任务拆解", "meta_dimension": "general_competency", "dual_track": "translate", "group": "组织协调", "primary": "J3", "aliases": ["WBS", "里程碑拆解", "需求拆解"],
+      "bars": ["了解任务分解基本方法", "能说明 WBS、里程碑拆解逻辑", "能把任务拆成可执行子任务", "能合理估算、排期并跟踪", "能制定拆解规范并带教"]
+    },
+    {
+      "name": "进度管理", "meta_dimension": "general_competency", "dual_track": "translate", "group": "组织协调", "primary": "J3", "aliases": ["项目排期", "进度跟踪"],
+      "bars": ["了解进度管理基本工具", "能说明计划、执行、监控闭环", "能独立制定并跟进计划", "能识别风险、调整进度保交付", "能搭建项目管理流程并带教"]
+    },
+    {
+      "name": "资源协调", "meta_dimension": "general_competency", "dual_track": "translate", "group": "组织协调", "primary": "J3", "aliases": ["资源整合", "资源配置"],
+      "bars": ["了解资源协调基本概念", "能说明人、财、物资源配置逻辑", "能独立协调所需资源", "能高效整合内外部资源", "能建立资源协调机制"]
+    },
+    {
+      "name": "独立交付", "meta_dimension": "general_competency", "dual_track": "translate", "group": "组织协调", "primary": "J3", "secondary": "J4", "aliases": ["负责人", "立项", "从 0 到 1", "独立完成", "全流程", "全链路", "独立运营"],
+      "bars": ["了解端到端交付基本流程", "能说明从需求到交付的完整链路", "能独立完成一个完整交付", "能端到端独立交付并保证质量", "能带教他人独立交付"]
+    },
+    {
+      "name": "文本解读", "meta_dimension": "general_competency", "dual_track": "translate", "group": "表达与写作", "primary": "J1", "aliases": ["文案润色", "校对", "内容审核", "合规性", "逻辑把控", "汉语言文学", "中国语言文学", "中文"],
+      "bars": ["了解文本分析基本方法", "能说明文本结构、主旨、论证解析", "能独立提炼文本要点", "能深度解读并批判性评估", "能指导他人解读复杂文本"]
+    },
+    {
+      "name": "写作能力", "meta_dimension": "general_competency", "dual_track": "translate", "group": "表达与写作", "primary": "J1", "secondary": "J4", "aliases": ["学术写作", "教案", "文档撰写", "会议纪要", "操作文档", "报告", "文案", "知识文档化"],
+      "bars": ["了解规范写作基本要求", "能说明结构、逻辑、表达要点", "能独立写出规范文档", "能产出高质量报告或方案", "能指导他人写作并制定规范"]
+    },
+    {
+      "name": "培养他人", "meta_dimension": "general_competency", "dual_track": "translate", "group": "表达与写作", "primary": "J3", "secondary": "J2", "aliases": ["学员答疑", "作品点评", "带教", "培训", "讲师", "班主任", "技术支持同事"],
+      "bars": ["了解知识传授基本方法", "能说明带教、反馈逻辑", "能独立讲解并答疑", "能系统带教并促进成长", "能搭建培养体系"]
+    },
+    {
+      "name": "商业思维", "meta_dimension": "knowledge", "dual_track": "translate", "group": "知识基础", "primary": "J3", "secondary": "J2", "aliases": ["用户需求", "定价", "目标客户", "商业", "指标", "增长", "运营", "数字商业思维"],
+      "bars": ["了解供需、成本、价值等基本概念", "能说明业务逻辑与商业模式", "能从商业视角分析问题", "能发现商业机会并落地", "能指导他人建立商业判断"]
+    },
+    {
+      "name": "行业趋势研判", "meta_dimension": "knowledge", "dual_track": "translate", "group": "知识基础", "primary": "J3", "secondary": "J2", "aliases": ["竞品调研", "市场分析", "行业动态", "趋势报告", "技术选型调研", "模型对比测试", "新质生产力理解"],
+      "bars": ["了解行业基本格局", "能说明行业趋势与驱动因素", "能独立分析行业动态", "能预判趋势并给出判断", "能建立研判框架并带教"]
+    },
+    {
+      "name": "文献检索", "meta_dimension": "knowledge", "dual_track": "translate", "group": "知识基础", "primary": "J4", "aliases": ["文献考据", "史料研究", "系统综述"],
+      "bars": ["了解文献检索基本渠道", "能说明检索策略与关键词设计", "能独立检索并筛选文献", "能高效检索并系统综述", "能指导他人检索与综述"]
+    },
+    {
+      "name": "批判性思维", "meta_dimension": "cognitive_ability", "dual_track": "translate", "group": "认知能力", "primary": "J4", "secondary": "J3", "aliases": ["信息甄别", "实证分析", "批判思维"],
+      "bars": ["了解批判性思维基本概念", "能说明论证、证据、谬误辨析", "能独立评估信息与论证", "能发现逻辑漏洞并提出质疑", "能指导他人批判性思考"]
+    },
+    {
+      "name": "逻辑思维", "meta_dimension": "cognitive_ability", "dual_track": "translate", "group": "认知能力", "primary": "J4", "secondary": "J2", "aliases": ["逻辑推理", "结构化论证", "抽象推理"],
+      "bars": ["了解逻辑推理基本形式", "能说明演绎、归纳、类比推理", "能独立进行严谨推理", "能处理复杂逻辑链条", "能指导他人严谨推理"]
+    },
+    {
+      "name": "持续改进", "meta_dimension": "work_style", "dual_track": "translate", "group": "工作风格", "primary": "J4", "secondary": "J2", "aliases": ["迭代", "优化", "提效", "效率提升", "流程优化", "反思迭代", "快速迭代"],
+      "bars": ["了解持续改进理念", "能说明复盘、迭代方法", "能独立复盘并改进", "能主动优化并推动改进", "能建立改进机制"]
+    },
+    {
+      "name": "质量意识", "meta_dimension": "work_style", "dual_track": "translate", "group": "工作风格", "primary": "J2", "secondary": "J1", "aliases": ["零故障", "准确率", "质量", "细致严谨", "二次排查"],
+      "bars": ["了解质量标准基本概念", "能说明质量与效率的平衡", "能独立保证交付质量", "能主动把控质量并纠偏", "能制定质量规范并带教"]
+    },
+    {
+      "name": "成果导向", "meta_dimension": "work_style", "dual_track": "translate", "group": "工作风格", "primary": "J3", "secondary": "J2", "aliases": ["曝光", "点赞", "转化率", "排名", "点击率", "满意度"],
+      "bars": ["了解以结果为导向的理念", "能说明目标、结果、价值逻辑", "能围绕目标推进拿到结果", "能高效产出可见成果", "能指导他人成果导向"]
+    },
+    {
+      "name": "责任担当", "meta_dimension": "work_style", "dual_track": "translate", "group": "工作风格", "primary": "J3", "secondary": "J4", "aliases": ["责任心", "吃苦耐劳", "奉献", "担当", "迎难而上"],
+      "bars": ["了解责任心基本含义", "能说明对结果负责的意义", "能对自己的任务负责到底", "能主动担责、迎难而上", "能以身作则并带动他人"]
+    },
+    {
+      "name": "快速学习", "meta_dimension": "psycap", "dual_track": "translate", "group": "心理资本", "primary": "J2", "secondary": "J4", "aliases": ["学习能力强", "新技术", "好奇", "上手快"],
+      "bars": ["了解学习基本方法", "能说明高效学习路径", "能独立快速上手新知识", "能快速掌握新领域并应用", "能沉淀学习方法并带教"]
+    },
+    {
+      "name": "抗压韧性", "meta_dimension": "psycap", "dual_track": "translate", "group": "心理资本", "primary": "J2", "secondary": "J3", "aliases": ["高强度", "抗压", "冷静", "压力"],
+      "bars": ["了解压力应对基本方法", "能说明压力来源与应对策略", "能在压力下保持稳定", "能在高强度下保持冷静并完成", "能带动他人应对压力"]
+    }
+  ],
+  "job_families": [
+    {
+      "code": "J1", "name": "J1 数字内容/人文", "description": "内容运营、AIGC 内容审核、文案策略与数字人文", "minimum_education_level": "bachelor", "recommended_experience_months": 0,
+      "responsibilities": ["策划并生产数字内容", "审核内容质量与合规性", "结合生成式 AI 和交互工具完成内容交付"],
+      "industry_scenarios": ["文化创意", "AIGC 内容审核", "数字人文"],
+      "required": ["AI 内容生成", "图文编辑", "短视频制作", "交互内容制作", "文本解读", "写作能力"],
+      "bonus": ["提示工程", "质量意识"]
+    },
+    {
+      "code": "J2", "name": "J2 数据/分析", "description": "商业数据分析、文本挖掘与数字化解决方案", "minimum_education_level": "bachelor", "recommended_experience_months": 0,
+      "responsibilities": ["完成数据获取、清洗、分析与可视化", "用统计或文本方法形成可验证结论", "把分析结果转化为业务洞察"],
+      "industry_scenarios": ["商业数据分析", "数字化解决方案", "文本挖掘"],
+      "required": ["数据清洗", "统计推断", "数据可视化", "文本挖掘", "提示工程", "数学建模", "质量意识", "快速学习", "抗压韧性"],
+      "bonus": ["创新策划", "培养他人", "商业思维", "行业趋势研判", "逻辑思维", "持续改进", "成果导向"]
+    },
+    {
+      "code": "J3", "name": "J3 产品/管理", "description": "产品、运营、项目管理与行业解决方案", "minimum_education_level": "bachelor", "recommended_experience_months": 0,
+      "responsibilities": ["识别用户与业务需求", "拆解任务并协调跨部门资源", "推进项目端到端交付并对结果负责"],
+      "industry_scenarios": ["数字产品", "项目管理", "行业解决方案"],
+      "required": ["跨部门沟通", "团队协作", "冲突解决", "任务拆解", "进度管理", "资源协调", "独立交付", "商业思维", "行业趋势研判", "成果导向", "责任担当"],
+      "bonus": ["跨界迁移", "批判性思维", "抗压韧性"]
+    },
+    {
+      "code": "J4", "name": "J4 交叉研究", "description": "交叉研究、AI 伦理合规与生成式 AI 系统应用", "minimum_education_level": "master", "recommended_experience_months": 0,
+      "responsibilities": ["检索并评估跨学科证据", "迁移学科方法解决复杂问题", "形成可复核的研究或策略成果"],
+      "industry_scenarios": ["交叉研究", "AI 伦理合规", "生成式 AI 系统应用"],
+      "required": ["创新策划", "跨界迁移", "文献检索", "批判性思维", "逻辑思维", "持续改进"],
+      "bonus": ["文本挖掘", "独立交付", "写作能力", "责任担当", "快速学习"]
+    }
+  ]
+}

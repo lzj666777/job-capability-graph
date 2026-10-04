@@ -91,6 +91,42 @@ export interface ResumeProfileDetail {
   skills: ResumeSkillRecord[]
 }
 
+export interface ResumeSummary {
+  id: string
+  display_name: string
+  file: {
+    id: string
+    metadata_url: string
+    content_url: string
+    download_url: string
+  }
+  parse_status: 'uploaded' | 'processing' | 'ready' | 'failed' | 'archived'
+  latest_run_id: string | null
+  latest_profile_version: number | null
+  confirmed_profile_version: number | null
+  created_at: string
+  updated_at: string
+  archived_at: string | null
+}
+
+export type ResumeProfileSummary = Omit<ResumeProfileDetail, 'text_extraction_method' | 'profile' | 'skills'>
+
+export interface ManualProfileReplacePayload {
+  document_language: string
+  summary: string | null
+  educations: Array<Record<string, unknown>>
+  experiences: Array<Record<string, unknown>>
+  projects: Array<Record<string, unknown>>
+  skills: Array<{
+    raw_name: string
+    capability_id: string | null
+    proficiency: 'beginner' | 'intermediate' | 'advanced' | null
+    explicit_experience_months: number | null
+    evidence_strength: 'mention' | 'project' | 'work'
+    evidence_quote: string | null
+  }>
+}
+
 export interface MatchRunReference {
   id: string
   owner_user_id: string
@@ -149,7 +185,7 @@ export interface MatchResultListItem {
   dimension_scores: Record<
     'required_skill_coverage' | 'bonus_skill_coverage' | 'skill_evidence_quality' | 'experience' | 'education',
     MatchDimensionScore
-  >
+  > & Partial<Record<'comprehensive_quality' | 'knowledge_foundation' | 'hard_skill_gap', MatchDimensionScore>>
   gap_summary: {
     matched_required_count: number
     missing_required_count: number
@@ -257,6 +293,11 @@ export interface GrowthPathCreateResponse {
   growth_path: GrowthPathRead
 }
 
+export interface RecommendationRunResponse {
+  run: MatchRunReference
+  results: MatchResultPage
+}
+
 function uploadProgressHandler(
   onUploadProgress?: (progress: number) => void,
 ) {
@@ -299,6 +340,28 @@ export async function getResumeProfile(
   return request.get<ResumeProfileDetail>(`/api/v1/resumes/${resumeId}/profiles/${versionNo}`)
 }
 
+export const listResumes = (): Promise<ResumeSummary[]> =>
+  request.get('/api/v1/resumes', { params: { page_size: 100 } })
+
+export const getResume = (resumeId: string): Promise<ResumeSummary> =>
+  request.get(`/api/v1/resumes/${resumeId}`)
+
+export const listResumeProfiles = (resumeId: string): Promise<ResumeProfileSummary[]> =>
+  request.get(`/api/v1/resumes/${resumeId}/profiles`)
+
+export const createResumeProfileRevision = (resumeId: string, versionNo: number): Promise<ResumeProfileDetail> =>
+  request.post(`/api/v1/resumes/${resumeId}/profiles/${versionNo}/revisions`)
+
+export const replaceResumeProfileDraft = (
+  resumeId: string,
+  versionNo: number,
+  payload: ManualProfileReplacePayload,
+): Promise<ResumeProfileDetail> =>
+  request.put(`/api/v1/resumes/${resumeId}/profiles/${versionNo}`, payload)
+
+export const archiveResume = (resumeId: string): Promise<ResumeSummary> =>
+  request.post(`/api/v1/resumes/${resumeId}/archive`)
+
 export async function confirmResumeProfile(
   resumeId: string,
   versionNo: number,
@@ -318,10 +381,17 @@ export async function getRecommendationDetail(
   matchRunId: string,
   jobRoleId: string,
 ): Promise<RecommendationDetailResponse> {
-  return request.get<RecommendationDetailResponse>(
+  const data = await request.get<{ run: MatchRunReference; result: RecommendationDetailResponse }>(
     `/api/v1/job-recommendations/${matchRunId}/job-roles/${jobRoleId}`,
   )
+  return data.result
 }
+
+export const listRecommendationRuns = (resumeId?: string): Promise<{ items: MatchRunReference[]; page: number; page_size: number; total: number }> =>
+  request.get('/api/v1/job-recommendations', { params: { page_size: 100, ...(resumeId ? { resume_id: resumeId } : {}) } })
+
+export const getRecommendationRun = (matchRunId: string): Promise<RecommendationRunResponse> =>
+  request.get(`/api/v1/job-recommendations/${matchRunId}`, { params: { page_size: 100 } })
 
 export async function createGrowthPath(
   matchRunId: string,
@@ -329,5 +399,10 @@ export async function createGrowthPath(
 ): Promise<GrowthPathCreateResponse> {
   return request.post<GrowthPathCreateResponse>(
     `/api/v1/job-recommendations/${matchRunId}/job-roles/${jobRoleId}/growth-path`,
+    undefined,
+    { timeout: 200_000 },
   )
 }
+
+export const getGrowthPath = (matchRunId: string, jobRoleId: string): Promise<GrowthPathRead> =>
+  request.get(`/api/v1/job-recommendations/${matchRunId}/job-roles/${jobRoleId}/growth-path`)

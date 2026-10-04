@@ -19,6 +19,7 @@ from app.catalog.models import (
     JobRoleCapability,
 )
 from app.core.errors import APIError
+from app.discovery.models import CombinationSkill, SkillCombinationCandidate
 from app.graph.models import GraphVersion
 from app.graph.neo4j import (
     GraphPublishResult,
@@ -29,6 +30,85 @@ from app.reviews.models import GraphChangeCandidate
 from app.reviews.schemas import RoleDefinitionPayload
 
 GraphPublisher = Callable[[dict, int], Awaitable[GraphPublishResult]]
+
+
+async def list_emerging_jobs_for_graph(
+    db: AsyncSession,
+    *,
+    page: int,
+    page_size: int,
+) -> list[dict]:
+    candidates = (
+        await db.scalars(
+            select(SkillCombinationCandidate)
+            .where(SkillCombinationCandidate.status != "rejected")
+            .order_by(
+                SkillCombinationCandidate.overall_candidate_score.desc(),
+                SkillCombinationCandidate.id,
+            )
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
+    ).all()
+    candidate_ids = [candidate.id for candidate in candidates]
+    skills_by_candidate: dict[UUID, dict[str, list[str]]] = {}
+    if candidate_ids:
+        rows = (
+            await db.execute(
+                select(CombinationSkill, Capability)
+                .join(Capability, Capability.id == CombinationSkill.capability_id)
+                .where(CombinationSkill.candidate_id.in_(candidate_ids))
+                .order_by(
+                    CombinationSkill.candidate_id,
+                    Capability.canonical_name,
+                    Capability.id,
+                )
+            )
+        ).all()
+        for skill, capability in rows:
+            role = "required" if skill.skill_role == "core" else "bonus"
+            skills_by_candidate.setdefault(
+                skill.candidate_id,
+                {"required": [], "bonus": []},
+            )[role].append(capability.canonical_name)
+
+    values = []
+    for candidate in candidates:
+        payload = dict(candidate.definition_payload)
+        mapped_skills = skills_by_candidate.get(
+            candidate.id,
+            {"required": [], "bonus": []},
+        )
+        required_names = [
+            item.get("skill")
+            for item in payload.get("required_skills", [])
+            if isinstance(item, dict) and item.get("skill")
+        ]
+        bonus_names = [
+            item.get("skill")
+            for item in payload.get("bonus_skills", [])
+            if isinstance(item, dict) and item.get("skill")
+        ]
+        values.append(
+            {
+                "id": candidate.id,
+                "suggested_name": candidate.suggested_name,
+                "support_job_count": candidate.support_job_count,
+                "source_count": candidate.source_count,
+                "company_count": candidate.company_count,
+                "overall_candidate_score": float(candidate.overall_candidate_score),
+                "required_skill_names": list(
+                    dict.fromkeys([*required_names, *mapped_skills["required"]])
+                ),
+                "bonus_skill_names": list(
+                    dict.fromkeys([*bonus_names, *mapped_skills["bonus"]])
+                ),
+                "industries": payload.get("industries", []),
+                "status": candidate.status,
+                "source": payload.get("source"),
+            }
+        )
+    return values
 
 
 async def list_graph_versions(
@@ -308,6 +388,7 @@ def _build_snapshot(
                 "id": str(capability.id),
                 "canonical_name": capability.canonical_name,
                 "skill_type": capability.skill_type,
+                "framework_payload": deepcopy(capability.framework_payload),
                 "status": capability.status,
                 "requirement_type": requirement_type,
                 "importance": importance,

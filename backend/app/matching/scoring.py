@@ -4,8 +4,13 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Literal
 from uuid import UUID
 
-WEIGHT_VERSION = "match_weights_v1"
+WEIGHT_VERSION = "translation_weights_v2"
 WEIGHTS = {
+    "comprehensive_quality": Decimal("0.45"),
+    "knowledge_foundation": Decimal("0.40"),
+    "education": Decimal("0.15"),
+}
+LEGACY_WEIGHTS = {
     "required_skill_coverage": Decimal("0.55"),
     "bonus_skill_coverage": Decimal("0.10"),
     "skill_evidence_quality": Decimal("0.15"),
@@ -64,6 +69,8 @@ class CapabilityRequirementInput:
     domain_id: UUID
     domain_code: str
     domain_name: str
+    dual_track: str | None = None
+    capability_group: str | None = None
 
 
 @dataclass(frozen=True)
@@ -116,8 +123,12 @@ class ScoredJobRole:
 
 def weight_snapshot() -> dict:
     return {
-        "algorithm": "exact_capability_match_v1",
+        "algorithm": "capability_translation_v2",
         "weights": {key: float(value) for key, value in WEIGHTS.items()},
+        "hard_skill_gap_separate": True,
+        "legacy_fallback_weights": {
+            key: float(value) for key, value in LEGACY_WEIGHTS.items()
+        },
         "evidence_factors": {
             key: float(value) for key, value in EVIDENCE_FACTORS.items()
         },
@@ -168,13 +179,26 @@ def score_profile_against_requirements(
         profile.highest_education_level,
         minimum_education_level,
     )
-    total_raw = (
-        required_raw * WEIGHTS["required_skill_coverage"]
-        + bonus_raw * WEIGHTS["bonus_skill_coverage"]
-        + evidence_raw * WEIGHTS["skill_evidence_quality"]
-        + experience_raw * WEIGHTS["experience"]
-        + education_raw * WEIGHTS["education"]
-    )
+    translation_dimensions = _translation_dimensions(requirements, profile)
+    if translation_dimensions is None:
+        total_raw = (
+            required_raw * LEGACY_WEIGHTS["required_skill_coverage"]
+            + bonus_raw * LEGACY_WEIGHTS["bonus_skill_coverage"]
+            + evidence_raw * LEGACY_WEIGHTS["skill_evidence_quality"]
+            + experience_raw * LEGACY_WEIGHTS["experience"]
+            + education_raw * LEGACY_WEIGHTS["education"]
+        )
+    else:
+        comprehensive_raw, comprehensive_data = translation_dimensions[
+            "comprehensive_quality"
+        ]
+        knowledge_raw, knowledge_data = translation_dimensions["knowledge_foundation"]
+        _hard_gap_raw, hard_gap_data = translation_dimensions["hard_skill_gap"]
+        total_raw = (
+            comprehensive_raw * WEIGHTS["comprehensive_quality"]
+            + knowledge_raw * WEIGHTS["knowledge_foundation"]
+            + education_raw * WEIGHTS["education"]
+        )
     total = quantize_score(total_raw)
     matched_capabilities, missing_capabilities = _capability_snapshots(
         requirements,
@@ -195,6 +219,15 @@ def score_profile_against_requirements(
             "skill_evidence_quality": evidence_data,
             "experience": experience_data,
             "education": education_data,
+            **(
+                {
+                    "comprehensive_quality": comprehensive_data,
+                    "knowledge_foundation": knowledge_data,
+                    "hard_skill_gap": hard_gap_data,
+                }
+                if translation_dimensions is not None
+                else {}
+            ),
         },
         matched_capabilities=matched_capabilities,
         missing_capabilities=missing_capabilities,
@@ -331,6 +364,97 @@ def _evidence_quality(
         "evidence_weighted_importance": float(weighted_importance),
         "matched_importance": float(matched_importance),
     }
+
+
+def _translation_dimensions(
+    requirements: tuple[CapabilityRequirementInput, ...],
+    profile: ProfileMatchInput,
+) -> dict[str, tuple[Decimal, dict]] | None:
+    if not requirements or any(
+        value.dual_track not in {"gap", "translate"} for value in requirements
+    ):
+        return None
+
+    hard = tuple(value for value in requirements if value.dual_track == "gap")
+    translated = tuple(
+        value for value in requirements if value.dual_track == "translate"
+    )
+    if not translated:
+        return None
+    comprehensive = tuple(
+        value
+        for value in translated
+        if value.skill_type in {"cognitive_ability", "work_style", "psycap"}
+        or value.capability_group == "组织协调"
+    )
+    knowledge = tuple(value for value in translated if value not in comprehensive)
+    return {
+        "comprehensive_quality": _evidence_weighted_coverage(
+            comprehensive,
+            profile,
+        ),
+        "knowledge_foundation": _evidence_weighted_coverage(knowledge, profile),
+        "hard_skill_gap": _gap_coverage(hard, profile),
+    }
+
+
+def _evidence_weighted_coverage(
+    requirements: tuple[CapabilityRequirementInput, ...],
+    profile: ProfileMatchInput,
+) -> tuple[Decimal, dict]:
+    if not requirements:
+        return Decimal("100"), {
+            "score": 100.0,
+            "status": "not_required",
+            "matched_count": 0,
+            "total_count": 0,
+            "evidence_weighted_importance": 0.0,
+            "total_importance": 0.0,
+        }
+    total_importance = sum(
+        (value.importance for value in requirements),
+        start=Decimal("0"),
+    )
+    if total_importance <= 0:
+        raise MatchCatalogInconsistent("translation capability importance is invalid")
+    matched = tuple(
+        value for value in requirements if value.capability_id in profile.skills
+    )
+    weighted = sum(
+        (
+            value.importance
+            * EVIDENCE_FACTORS[profile.skills[value.capability_id].evidence_strength]
+            for value in matched
+        ),
+        start=Decimal("0"),
+    )
+    score = weighted / total_importance * Decimal("100")
+    return score, {
+        "score": _score_number(score),
+        "status": "evaluated",
+        "matched_count": len(matched),
+        "total_count": len(requirements),
+        "evidence_weighted_importance": float(weighted),
+        "total_importance": float(total_importance),
+    }
+
+
+def _gap_coverage(
+    requirements: tuple[CapabilityRequirementInput, ...],
+    profile: ProfileMatchInput,
+) -> tuple[Decimal, dict]:
+    if not requirements:
+        return Decimal("100"), {
+            "score": 100.0,
+            "status": "not_required",
+            "matched_count": 0,
+            "total_count": 0,
+            "matched_importance": 0.0,
+            "total_importance": 0.0,
+        }
+    score, data = _coverage(requirements, profile, required=False)
+    data["status"] = "evaluated"
+    return score, data
 
 
 def _experience_score(

@@ -14,6 +14,7 @@ import MOCK_GRAPH_DATA from '../data/mockGraphData'
 import { fetchGraphData } from '../services/graphApi'
 import type { GraphData, Planet, Star } from '../types/graph'
 import { findGraphStarForRole } from '../utils/graphRoleMatch'
+import AuthGate from '../components/AuthGate'
 
 const typeColor: Record<string, string> = {
   core: '#ee1212',
@@ -31,7 +32,7 @@ const FEATURED_LIMIT = 8
 const AUTO_HIDE_LABEL_LIMIT = 48
 const AUTO_HIDE_SKILL_LABEL_LIMIT = 320
 
-export default function SpaceGraphPage() {
+function GraphWorkspace() {
   const [searchParams] = useSearchParams()
   const [graphData, setGraphData] = useState<GraphData>(MOCK_GRAPH_DATA)
   const [loading, setLoading] = useState(true)
@@ -611,5 +612,17 @@ export default function SpaceGraphPage() {
         </>
       )}
     </div>
+  )
+}
+
+export default function SpaceGraphPage() {
+  return (
+    <AuthGate
+      roles={['applicant', 'hr', 'admin']}
+      title="岗位能力图谱"
+      description="登录后读取当前已发布的岗位与能力图谱。"
+    >
+      <GraphWorkspace />
+    </AuthGate>
   )
 }

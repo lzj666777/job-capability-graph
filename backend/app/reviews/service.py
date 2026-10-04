@@ -65,10 +65,13 @@ async def create_review_proposal(
             CombinationEvidence.representative.is_(True),
         )
     )
+    definition = dict(candidate.definition_payload)
+    workbook_evidence = definition.get("representative_companies", [])
+    effective_evidence_count = evidence_count or len(workbook_evidence)
     if (
         len(skill_rows) < 2
         or any(capability.status != "active" for _, capability in skill_rows)
-        or not evidence_count
+        or not effective_evidence_count
     ):
         raise APIError(
             409,
@@ -76,10 +79,18 @@ async def create_review_proposal(
             "候选缺少有效技能或证据，无法进入审核",
         )
 
-    required_ids = [capability.id for _, capability in skill_rows]
+    required_ids = [
+        capability.id for skill, capability in skill_rows if skill.skill_role == "core"
+    ]
+    bonus_ids = [
+        capability.id for skill, capability in skill_rows if skill.skill_role == "bonus"
+    ]
     payload = RoleDefinitionPayload(
         role_name=candidate.suggested_name,
+        core_responsibilities=definition.get("responsibilities", []),
         required_capability_ids=required_ids,
+        bonus_capability_ids=bonus_ids,
+        industry_scenarios=definition.get("industries", []),
         generation_source="deterministic_baseline",
         definition_status="needs_enrichment",
     ).model_dump(mode="json")
@@ -108,7 +119,7 @@ async def create_review_proposal(
             "support_job_count": candidate.support_job_count,
             "source_count": candidate.source_count,
             "company_count": candidate.company_count,
-            "evidence_count": evidence_count,
+            "evidence_count": effective_evidence_count,
             "representative_evidence_count": representative_count or 0,
         },
         confidence=candidate.overall_candidate_score,

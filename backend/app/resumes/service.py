@@ -23,6 +23,7 @@ from app.discovery.mining import normalize_skill_label
 from app.files.models import StoredFile
 from app.infrastructure.file_storage import FileSizeLimitExceeded, FileStorage
 from app.processing.models import IdempotencyRecord, ProcessingRun
+from app.resumes.constants import PIPELINE_VERSION, PROMPT_VERSION
 from app.resumes.llm import LLMParseResult
 from app.resumes.models import Resume, ResumeProfile, ResumeSkill
 from app.resumes.parsing import (
@@ -92,8 +93,7 @@ async def map_resume_skills(
         by_name[normalized_name].append(candidate)
 
     candidates = [
-        max(values, key=skill_rank)
-        for _name, values in sorted(by_name.items())
+        max(values, key=skill_rank) for _name, values in sorted(by_name.items())
     ]
 
     resolution_result = await resolve_capability_labels(
@@ -128,9 +128,7 @@ async def map_resume_skills(
         )
         mapped_with_sources.append((mapped, candidate))
 
-    selected = [
-        pair for pair in mapped_with_sources if pair[0].capability_id is None
-    ]
+    selected = [pair for pair in mapped_with_sources if pair[0].capability_id is None]
     by_capability: dict[UUID, list[tuple[MappedResumeSkill, dict]]] = defaultdict(list)
     for pair in mapped_with_sources:
         if pair[0].capability_id is not None:
@@ -181,9 +179,7 @@ async def complete_run_for_profile(
     )
     warnings = profile.structured_payload.get("validation_warnings", [])
     result = {
-        "result_url": (
-            f"/api/v1/resumes/{resume.id}/profiles/{profile.version_no}"
-        ),
+        "result_url": (f"/api/v1/resumes/{resume.id}/profiles/{profile.version_no}"),
         "resume_id": str(resume.id),
         "profile_id": str(profile.id),
         "profile_version": profile.version_no,
@@ -278,7 +274,7 @@ async def persist_extracted_profile(
                 "output_tokens": llm_result.usage.get("output_tokens"),
                 "total_tokens": llm_result.usage.get("total_tokens"),
                 "provider_attempts": llm_result.provider_attempts,
-                "prompt_version": "resume_parse_v1",
+                "prompt_version": PROMPT_VERSION,
                 "response_sha256": llm_result.response_sha256,
             },
         }
@@ -392,9 +388,9 @@ async def create_resume(
     if len(original_name) > 255:
         raise APIError(422, "VALIDATION_FAILED", "简历文件名过长")
     extension = Path(original_name).suffix.lower().lstrip(".")
-    media_type = (upload.content_type or "application/octet-stream").split(";", 1)[
-        0
-    ].lower()
+    media_type = (
+        (upload.content_type or "application/octet-stream").split(";", 1)[0].lower()
+    )
     if (
         extension not in ALLOWED_RESUME_MEDIA_TYPES
         or media_type not in ALLOWED_RESUME_MEDIA_TYPES[extension]
@@ -470,7 +466,7 @@ async def create_resume(
         owner_scope_type="user",
         owner_scope_id=actor.id,
         status="pending",
-        pipeline_version="resume_parse_v1",
+        pipeline_version=PIPELINE_VERSION,
         total_count=1,
         max_attempts=1,
         input_snapshot={"resume_id": str(resume_id), "file_id": str(file_id)},
@@ -625,15 +621,19 @@ async def list_profiles(db: AsyncSession, resume: Resume) -> list[dict]:
     base_ids = [
         profile.base_profile_id for profile in profiles if profile.base_profile_id
     ]
-    base_versions = dict(
-        (
-            await db.execute(
-                select(ResumeProfile.id, ResumeProfile.version_no).where(
-                    ResumeProfile.id.in_(base_ids)
+    base_versions = (
+        dict(
+            (
+                await db.execute(
+                    select(ResumeProfile.id, ResumeProfile.version_no).where(
+                        ResumeProfile.id.in_(base_ids)
+                    )
                 )
-            )
-        ).all()
-    ) if base_ids else {}
+            ).all()
+        )
+        if base_ids
+        else {}
+    )
     return [
         _profile_summary(profile, base_versions.get(profile.base_profile_id))
         for profile in profiles

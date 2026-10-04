@@ -1,4 +1,3 @@
-import asyncio
 from collections import defaultdict
 from datetime import UTC, datetime
 from decimal import ROUND_HALF_UP, Decimal
@@ -26,7 +25,7 @@ from app.discovery.models import (
     SkillCombinationCandidate,
 )
 from app.imports.models import NormalizedJobPosting, RawJobPosting
-from app.infrastructure.database import SessionFactory
+from app.infrastructure.database import SessionFactory, run_worker
 from app.processing.models import ProcessingError, ProcessingRun
 from app.worker import celery_app
 
@@ -204,9 +203,7 @@ async def process_discovery_run(db: AsyncSession, processing_run_id: UUID) -> di
             id=uuid4(),
             discovery_run_id=discovery_run.id,
             suggested_name=" + ".join(names),
-            normalized_name=" + ".join(
-                normalize_skill_label(name) for name in names
-            ),
+            normalized_name=" + ".join(normalize_skill_label(name) for name in names),
             definition_payload={
                 "algorithm": discovery_run.algorithm_version,
                 "capability_ids": [
@@ -248,9 +245,7 @@ async def process_discovery_run(db: AsyncSession, processing_run_id: UUID) -> di
                 CombinationEvidence(
                     candidate_id=candidate.id,
                     normalized_job_id=job_id,
-                    evidence_weight=_evidence_weight(
-                        jobs_by_id[job_id].quality_score
-                    ),
+                    evidence_weight=_evidence_weight(jobs_by_id[job_id].quality_score),
                     representative=job_id in representative_ids,
                 )
             )
@@ -288,9 +283,7 @@ async def _get_or_clone_discovery_run(
     processing_run: ProcessingRun,
 ) -> DiscoveryRun | None:
     discovery_run = await db.scalar(
-        select(DiscoveryRun).where(
-            DiscoveryRun.processing_run_id == processing_run.id
-        )
+        select(DiscoveryRun).where(DiscoveryRun.processing_run_id == processing_run.id)
     )
     if discovery_run is not None or processing_run.retry_of_run_id is None:
         return discovery_run
@@ -501,4 +494,4 @@ async def _run_with_session(run_id: str) -> dict:
 
 @celery_app.task(name="app.discover_skill_combinations")
 def discover_skill_combinations(run_id: str) -> dict:
-    return asyncio.run(_run_with_session(run_id))
+    return run_worker(_run_with_session(run_id))

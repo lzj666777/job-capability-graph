@@ -112,9 +112,7 @@ def test_end_month_cannot_precede_start_month() -> None:
 
 def test_array_and_string_limits_are_enforced() -> None:
     too_many = copy.deepcopy(VALID_PARSE)
-    too_many["skills"] = [
-        copy.deepcopy(VALID_PARSE["skills"][0]) for _ in range(101)
-    ]
+    too_many["skills"] = [copy.deepcopy(VALID_PARSE["skills"][0]) for _ in range(101)]
     with pytest.raises(ValidationError):
         ResumeParseResponse.model_validate(too_many)
 
@@ -171,9 +169,7 @@ def test_generated_schema_uses_strict_objects() -> None:
         if isinstance(node, dict):
             if node.get("type") == "object":
                 assert node.get("additionalProperties") is False
-                assert set(node.get("required", [])) == set(
-                    node.get("properties", {})
-                )
+                assert set(node.get("required", [])) == set(node.get("properties", {}))
             for value in node.values():
                 assert_strict_objects(value)
         elif isinstance(node, list):
@@ -230,11 +226,16 @@ async def test_posts_exact_responses_structured_output_contract() -> None:
         "text": "Python 项目",
     }
     assert body["text"]["format"]["type"] == "json_schema"
-    assert body["text"]["format"]["name"] == "resume_parse_v1"
+    assert body["text"]["format"]["name"] == "resume_capability_v2"
     assert body["text"]["format"]["strict"] is True
     assert body["store"] is False
     assert body["stream"] is False
     assert body["max_output_tokens"] == 5000
+    assert body["reasoning"] == {"effort": "low"}
+    assert "is_current 必须为 true 且 end_month 必须为 null" in body["instructions"]
+    assert "skills.name 只能从以下33项白名单中选择" in body["instructions"]
+    assert "交互内容制作" in body["instructions"]
+    assert "工具名、编程语言、框架名" in body["instructions"]
     assert "tools" not in body
     assert "previous_response_id" not in body
     assert "messages" not in body

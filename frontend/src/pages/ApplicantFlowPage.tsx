@@ -22,13 +22,16 @@ import {
 } from '@ant-design/icons'
 import { FrameCorners } from '../components/FrameCorners'
 import { GraphScene3D } from '../components/GraphScene3D'
-import { useAuth } from '../context/AuthContext'
+import AuthGate from '../components/AuthGate'
+import CapabilityTranslatorPanel from '../components/CapabilityTranslatorPanel'
+import ApplicantRecordsPanel from '../components/ApplicantRecordsPanel'
 import { fetchGraphData } from '../services/graphApi'
 import {
   confirmResumeProfile,
   createGrowthPath,
   createJobRecommendations,
   createResume,
+  getGrowthPath,
   getProcessingRun,
   getProcessingRunResult,
   getRecommendationDetail,
@@ -163,6 +166,16 @@ function matchLevelColor(value: MatchResultListItem['match_level']) {
 function radarData(result: MatchResultListItem | null) {
   if (!result) return []
   const scores = result.dimension_scores
+  if (scores.comprehensive_quality && scores.knowledge_foundation) {
+    return [
+      { axis: '综合素质', score: toPercent(scores.comprehensive_quality.score) },
+      { axis: '知识基础', score: toPercent(scores.knowledge_foundation.score) },
+      { axis: '学历层次', score: toPercent(scores.education.score) },
+      { axis: '硬技缺口', score: toPercent(scores.hard_skill_gap?.score) },
+      { axis: '证据质量', score: toPercent(scores.skill_evidence_quality.score) },
+      { axis: '综合', score: toPercent(result.total_score) },
+    ]
+  }
   return [
     { axis: '必备技能', score: toPercent(scores.required_skill_coverage.score) },
     { axis: '加分技能', score: toPercent(scores.bonus_skill_coverage.score) },
@@ -269,9 +282,8 @@ function RocketLoader({ progress, stage }: { progress: number; stage: string | n
   )
 }
 
-export default function ApplicantFlowPage() {
+function ApplicantFlowPageContent() {
   const navigate = useNavigate()
-  const { user, loading: authLoading, sessionError, ensureSession } = useAuth()
   const [step, setStep] = useState<Step>(0)
   const [uploading, setUploading] = useState(false)
   const [uploadState, setUploadState] = useState<UploadState>('idle')
@@ -298,6 +310,7 @@ export default function ApplicantFlowPage() {
   const [growthError, setGrowthError] = useState<string | null>(null)
   const [growthPath, setGrowthPath] = useState<GrowthPathRead | null>(null)
   const [growthPathKey, setGrowthPathKey] = useState<string | null>(null)
+  const [historyRefreshKey, setHistoryRefreshKey] = useState(0)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const profilePayload = resumeProfile?.profile ?? {}
@@ -372,6 +385,18 @@ export default function ApplicantFlowPage() {
         if (alive) setDetailLoading(false)
       })
 
+    const key = `${recommendations.run.id}:${selectedJobRoleId}`
+    getGrowthPath(recommendations.run.id, selectedJobRoleId)
+      .then((savedPath) => {
+        if (!alive) return
+        setGrowthPath(savedPath)
+        setGrowthPathKey(key)
+      })
+      .catch((error: { apiCode?: string }) => {
+        if (!alive || error.apiCode === 'GROWTH_PATH_NOT_FOUND') return
+        setGrowthError(apiErrorMessage(error))
+      })
+
     return () => {
       alive = false
     }
@@ -430,12 +455,6 @@ export default function ApplicantFlowPage() {
       setWorkflowError(validationError)
       return
     }
-    const session = user ?? await ensureSession()
-    if (!session) {
-      setWorkflowError('浏览器任务通道未建立，请确认后端服务已启动后重试')
-      return
-    }
-
     resetAnalysisState()
     setStep(0)
     setSelectedFile(file)
@@ -464,6 +483,7 @@ export default function ApplicantFlowPage() {
           setResumeProfile(profile)
           setUploadState('ready')
           setProgress(100)
+          setHistoryRefreshKey((value) => value + 1)
           setStep(1)
           return
         }
@@ -552,11 +572,7 @@ export default function ApplicantFlowPage() {
           ? '后端处理中'
           : uploadState === 'uploading'
             ? '正在上传'
-            : authLoading
-              ? '准备浏览器任务通道'
-              : user
-                ? '等待输入'
-                : '任务通道未建立'
+            : '等待输入'
 
   return (
     <div className="page-shell page-shell--applicant min-h-screen pt-14">
@@ -571,40 +587,6 @@ export default function ApplicantFlowPage() {
             <h1 className="page-head__title">简历评估</h1>
             <p className="page-head__desc">上传真实简历，调用后端 LLM 解析画像、推荐岗位并生成成长路径。</p>
           </div>
-        </div>
-
-        <div className="archive-panel glass rounded-2xl p-4 mb-7">
-          <FrameCorners />
-          {authLoading ? (
-            <div className="flex items-center gap-3 text-[13px] text-[var(--text-dim)]">
-              <LoadingOutlined />
-              正在准备浏览器任务通道
-            </div>
-          ) : user ? (
-            <div className="flex items-center gap-3 flex-wrap">
-              <span className="tag tag-green">
-                <CheckCircleOutlined />
-                {user.username === 'guest_applicant' ? '免登录通道已准备' : '当前通道已准备'}
-              </span>
-              <span className="font-jetbrains text-[10px] text-[var(--text-dim)]">
-                无需账号密码 · SESSION / READY
-              </span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-3 flex-wrap">
-              <div className="flex items-center gap-2 text-[13px] text-[#ee1212]">
-                <WarningOutlined />
-                浏览器任务通道未建立
-              </div>
-              <span className="text-[12px] text-[var(--text-dim)]">
-                {sessionError || '可以直接重试，无需输入账号和密码'}
-              </span>
-              <button className="btn btn-sm btn-ghost ml-auto" onClick={() => void ensureSession()}>
-                <ReloadOutlined />
-                重试
-              </button>
-            </div>
-          )}
         </div>
 
         <div className="console-stepper archive-stepper mb-10">
@@ -669,7 +651,7 @@ export default function ApplicantFlowPage() {
                     {selectedFile ? selectedFile.name : '上传候选人简历'}
                   </div>
                   <div className="text-[13px] text-[var(--text-dim)] mb-1.5">
-                    拖拽文件或点击选择，进入后自动准备免登录任务通道
+                    拖拽文件或点击选择，文件将保存到当前账号的个人档案
                   </div>
                   <div className="text-[11px] text-[#a49b92]">支持 PDF / Word (.docx) · 最大 20 MB</div>
                   {workflowError && (
@@ -730,7 +712,7 @@ export default function ApplicantFlowPage() {
               <dl className="applicant-scan-rail__facts">
                 <div>
                   <dt>SESSION</dt>
-                  <dd>{authLoading ? 'PREPARING' : user ? 'READY' : 'RETRY'}</dd>
+                  <dd>AUTHENTICATED</dd>
                 </div>
                 <div>
                   <dt>RUN</dt>
@@ -742,6 +724,28 @@ export default function ApplicantFlowPage() {
                 </div>
               </dl>
             </aside>
+            <div className="applicant-records-slot">
+              <ApplicantRecordsPanel
+                refreshKey={historyRefreshKey}
+                onOpenProfile={(profile) => {
+                  resetAnalysisState()
+                  setResumeProfile(profile)
+                  setUploadState('ready')
+                  setProgress(100)
+                  setStep(1)
+                }}
+                onOpenRecommendation={(profile, recommendation) => {
+                  resetAnalysisState()
+                  setResumeProfile(profile)
+                  setRecommendations(recommendation)
+                  setSelectedJobRoleId(recommendation.results.items[0]?.job_role_id ?? null)
+                  setUploadState('ready')
+                  setProgress(100)
+                  setActiveTab('radar')
+                  setStep(2)
+                }}
+              />
+            </div>
           </div>
         )}
 
@@ -856,6 +860,12 @@ export default function ApplicantFlowPage() {
                 {recommendationLoading ? <LoadingOutlined /> : <CheckCircleOutlined />}
                 确认画像 <ArrowRightOutlined /> 生成岗位推荐
               </button>
+            </div>
+            <div className="col-span-2">
+              <CapabilityTranslatorPanel
+                skills={resumeProfile.skills}
+                major={typeof educations[0]?.major === 'string' ? educations[0].major : null}
+              />
             </div>
           </div>
         )}
@@ -1241,5 +1251,13 @@ export default function ApplicantFlowPage() {
         )}
       </div>
     </div>
+  )
+}
+
+export default function ApplicantFlowPage() {
+  return (
+    <AuthGate roles={['applicant']} title="简历能力评估" description="使用应聘者账号登录，上传简历并查看个人能力画像、岗位推荐与成长路径。">
+      <ApplicantFlowPageContent />
+    </AuthGate>
   )
 }

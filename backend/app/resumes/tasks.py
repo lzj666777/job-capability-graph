@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from datetime import UTC, datetime
 from uuid import UUID
@@ -10,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.errors import APIError
 from app.files.models import StoredFile
-from app.infrastructure.database import SessionFactory
+from app.infrastructure.database import SessionFactory, run_worker
 from app.infrastructure.file_storage import FileStorage
 from app.processing.models import ProcessingError, ProcessingRun
 from app.resumes.analysis import analyze_resume_document
@@ -26,7 +25,6 @@ from app.worker import celery_app
 
 logger = logging.getLogger(__name__)
 storage = FileStorage(get_settings().file_storage_root)
-PIPELINE_VERSION = "resume_parse_v1"
 STAGES = {
     "extract_text": 10,
     "redact_text": 20,
@@ -292,4 +290,4 @@ async def _run_with_session(run_id: UUID) -> None:
 
 @celery_app.task(name="app.parse_resume")
 def parse_resume_task(run_id: str) -> None:
-    asyncio.run(_run_with_session(UUID(run_id)))
+    run_worker(_run_with_session(UUID(run_id)))

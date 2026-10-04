@@ -4,7 +4,7 @@ import json
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 from pydantic import BaseModel, ValidationError
@@ -61,6 +61,10 @@ class StructuredResponsesClient:
         metadata: dict[str, str],
         max_output_tokens: int = 5000,
         request_id: str | None = None,
+        reasoning_effort: Literal[
+            "none", "minimal", "low", "medium", "high", "xhigh", "max"
+        ]
+        | None = None,
     ) -> StructuredResponseResult[T]:
         body = {
             "model": model,
@@ -84,6 +88,8 @@ class StructuredResponsesClient:
             "store": False,
             "metadata": metadata,
         }
+        if reasoning_effort is not None:
+            body["reasoning"] = {"effort": reasoning_effort}
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
@@ -118,6 +124,8 @@ class StructuredResponsesClient:
             )
             if not error.retryable or attempt == 2:
                 raise error
+            if error.code == "LLM_RESPONSE_INCOMPLETE":
+                body["max_output_tokens"] = max_output_tokens * 2
             await self.sleep(_retry_delay(error, response))
 
         raise AssertionError("unreachable")
@@ -173,12 +181,30 @@ def _parse_response[T: BaseModel](
         or envelope.get("error") is not None
         or envelope.get("incomplete_details") is not None
     ):
+        usage = _usage(envelope.get("usage"))
+        logger.warning(
+            "responses envelope incomplete: status=%s output_tokens=%s",
+            status,
+            usage["output_tokens"],
+        )
         raise ResponsesAPIError("LLM_RESPONSE_INCOMPLETE", "validate_response", True)
 
     output_text = _read_output_text(envelope)
     try:
         payload = response_model.model_validate_json(output_text)
-    except (ValidationError, ValueError) as error:
+    except ValidationError as error:
+        logger.warning(
+            "responses schema validation failed: errors=%s",
+            [
+                {"loc": list(item["loc"]), "type": item["type"]}
+                for item in error.errors(include_input=False, include_context=False)
+            ],
+        )
+        raise ResponsesAPIError(
+            "LLM_RESPONSE_INVALID", "validate_response", True
+        ) from error
+    except ValueError as error:
+        logger.warning("responses output was not valid JSON")
         raise ResponsesAPIError(
             "LLM_RESPONSE_INVALID", "validate_response", True
         ) from error

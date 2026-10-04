@@ -24,6 +24,9 @@ SET capabilityDomain.code = capability.domain.code,
 MERGE (skill:Capability {id: capability.id})
 SET skill.canonical_name = capability.canonical_name,
     skill.skill_type = capability.skill_type,
+    skill.meta_dimension = capability.framework_payload.meta_dimension,
+    skill.dual_track = capability.framework_payload.dual_track,
+    skill.framework_group = capability.framework_payload.group,
     skill.status = capability.status,
     skill.graph_version = $graph_version
 MERGE (skill)-[skillDomainRelation:BELONGS_TO {

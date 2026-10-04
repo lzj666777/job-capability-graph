@@ -1,4 +1,3 @@
-import asyncio
 import hashlib
 import json
 from datetime import UTC, datetime
@@ -23,7 +22,7 @@ from app.imports.models import (
     RawJobPosting,
 )
 from app.imports.normalization import normalize_row
-from app.infrastructure.database import SessionFactory
+from app.infrastructure.database import SessionFactory, run_worker
 from app.infrastructure.file_storage import FileStorage
 from app.processing.models import ProcessingError, ProcessingRun
 from app.worker import celery_app
@@ -440,4 +439,4 @@ async def _run_with_session(run_id: str) -> dict:
 
 @celery_app.task(name="app.import_market_jd")
 def process_market_import_task(run_id: str) -> dict:
-    return asyncio.run(_run_with_session(run_id))
+    return run_worker(_run_with_session(run_id))

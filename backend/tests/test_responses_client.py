@@ -1,3 +1,4 @@
+import asyncio
 import json
 
 import httpx
@@ -62,4 +63,40 @@ async def test_structured_client_posts_strict_responses_schema() -> None:
     assert body["store"] is False
     assert body["stream"] is False
     assert "tools" not in body
+    assert "reasoning" not in body
+    assert result.payload.value == "ok"
+
+
+async def test_incomplete_response_retry_doubles_output_limit() -> None:
+    request_limits = []
+    responses = [
+        {
+            **completed_response(json.dumps({"value": "ignored"})),
+            "status": "incomplete",
+            "incomplete_details": {"reason": "max_output_tokens"},
+        },
+        completed_response(json.dumps({"value": "ok"})),
+    ]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        request_limits.append(json.loads(request.content)["max_output_tokens"])
+        return httpx.Response(200, json=responses.pop(0))
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+        result = await StructuredResponsesClient(
+            http=http,
+            sleep=lambda _seconds: asyncio.sleep(0),
+        ).generate(
+            url="https://provider.test/v1/responses",
+            api_key="secret",
+            model="test-model",
+            instructions="return the schema",
+            input_text="context",
+            schema_name="demo_v1",
+            response_model=DemoPayload,
+            metadata={"operation": "demo"},
+            max_output_tokens=5000,
+        )
+
+    assert request_limits == [5000, 10000]
     assert result.payload.value == "ok"

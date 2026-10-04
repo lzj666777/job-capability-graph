@@ -78,6 +78,7 @@ async def test_growth_prompt_uses_only_structured_match_context() -> None:
     assert "extracted_text" not in input_text
     assert body["text"]["format"]["name"] == "growth_path_v1"
     assert body["max_output_tokens"] == 4000
+    assert body["reasoning"] == {"effort": "low"}
     assert body["metadata"] == {
         "operation": "generate_growth_path",
         "growth_path_id": str(growth_path_id),

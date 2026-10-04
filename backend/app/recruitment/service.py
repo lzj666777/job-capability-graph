@@ -1186,6 +1186,7 @@ async def load_active_capability_catalog(
             "capability_id": str(capability.id),
             "canonical_name": capability.canonical_name,
             "skill_type": capability.skill_type,
+            "framework_payload": capability.framework_payload,
             "domain": {
                 "id": str(domain.id),
                 "code": domain.code,
