@@ -1,1 +1,1 @@
-"""岗位能力图谱系统后端。"""
+"""job-capability-graph application package."""

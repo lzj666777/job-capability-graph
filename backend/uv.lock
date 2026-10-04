@@ -376,7 +376,7 @@ wheels = [
 ]
 
 [[package]]
-name = "job-capability-graph-backend"
+name = "job-capability-graph"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
